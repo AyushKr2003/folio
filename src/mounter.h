@@ -64,7 +64,8 @@ private:
     bool m_asking = false;
     bool m_drive = false;
     // A drive's mount, cancelled when it stalls after unlocking (see
-    // providePassword); each mount counts as a new attempt.
+    // providePassword); each mount, passphrase request and reply counts as
+    // a new attempt, so only the latest reply's timer can cancel it.
     QString m_volume;
     GCancellable *m_cancellable = nullptr;
     bool m_lost = false;

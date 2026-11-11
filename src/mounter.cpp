@@ -55,6 +55,8 @@ struct MounterCallbacks {
                          GAskPasswordFlags, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-password");
         auto *self = static_cast<Mounter *>(data);
+        // Asked again (a wrong passphrase): the last reply's clock stops.
+        ++self->m_attempt;
         self->m_prompt = QString::fromUtf8(message).trimmed();
         self->m_user = QString::fromUtf8(user ? user : "");
         self->setAsking(true);
@@ -205,7 +207,8 @@ void Mounter::providePassword(const QString &user, const QString &password) {
     // a polkit prompt before it isn't cut short.
     if (m_drive && m_cancellable) {
         m_answered = true;
-        const int attempt = m_attempt;
+        // Each reply gets its own minute, from when it went in.
+        const int attempt = ++m_attempt;
         QTimer::singleShot(stalledAfterMs, this, [this, attempt] {
             if (attempt != m_attempt || !m_cancellable || m_asking)
                 return;
