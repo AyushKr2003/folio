@@ -22,6 +22,14 @@ Backend::Backend(const QString &home, QObject *parent)
     });
     connect(&m_mounter, &Mounter::mounted, this, [this](const QString &root) {
         setBusy({});
+        if (!m_mountDrive.isEmpty()) {
+            if (m_mountOpens)
+                navigate(root);
+            else
+                showNotice(tr("%1 is mounted").arg(m_mountDrive));
+            m_mountDrive.clear();
+            return;
+        }
         // Land in the matching home folder when the other machine has one,
         // which on a tailnet of one person's machines it usually does.
         const QString remoteHome = root + QDir::homePath();
@@ -31,7 +39,9 @@ Backend::Backend(const QString &home, QObject *parent)
         setBusy({});
         // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
-            setMessage(tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error));
+            setMessage(m_mountDrive.isEmpty() ? tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error)
+                                              : tr("Couldn't open %1: %2").arg(m_mountDrive, error));
+        m_mountDrive.clear();
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
@@ -213,8 +223,27 @@ void Backend::openPeer(const QString &host) {
     // are no keys or passwords to manage, and GVfs makes the mount look like
     // any other folder.
     m_mountHost = host;
+    m_mountDrive.clear();
     setBusy(tr("Connecting to %1…").arg(host));
     m_mounter.mount("sftp://" + host + "/");
+}
+
+void Backend::openVolume(const QString &volume, const QString &name) {
+    if (m_mounter.busy())
+        return;
+    m_mountDrive = name.isEmpty() ? tr("the drive") : name;
+    m_mountOpens = true;
+    setBusy(tr("Opening %1…").arg(m_mountDrive));
+    m_mounter.mountVolume(volume);
+}
+
+bool Backend::mountVolume(const QString &volume, const QString &name) {
+    if (m_mounter.busy())
+        return false;
+    m_mountDrive = name.isEmpty() ? tr("the drive") : name;
+    m_mountOpens = false;
+    m_mounter.mountVolume(volume);
+    return true;
 }
 
 void Backend::showNotice(const QString &notice) {
@@ -394,6 +423,19 @@ void Backend::followSelection(const QString &path) {
         return;
     m_previewed = path;
     m_preview.write(path.toUtf8() + '\n');
+}
+
+void Backend::closePreviewUnder(const QString &root) {
+    if (!previewing() || !(m_previewed == root || m_previewed.startsWith(root + "/")))
+        return;
+    m_closingPreview = true;
+    m_preview.terminate();
+    // The unmount goes out right after this; a player still holding the
+    // file would make it fail as busy.
+    if (!m_preview.waitForFinished(1000)) {
+        m_preview.kill();
+        m_preview.waitForFinished(1000);
+    }
 }
 
 void Backend::showFolder(const QString &path) {

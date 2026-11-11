@@ -13,7 +13,8 @@ Rectangle {
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
-    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    // rows, ⏎ (or →) opens one and hands the keyboard back to the files, and
+    // E ejects a drive.
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
@@ -51,10 +52,17 @@ Rectangle {
         if (row.host !== undefined)
             sidebar.target.openPeer(row.host)
         else
-            sidebar.target.navigate(row.path)
+            openDevice(row)
         finished()
     }
     function onMachine(host) { return sidebar.target.path.indexOf("/sftp:host=" + host) >= 0 }
+    // A drive that isn't mounted yet has no path: opening it mounts it.
+    function openDevice(row) {
+        if (row.path)
+            sidebar.target.navigate(row.path)
+        else if (row.volume !== undefined)
+            sidebar.target.openVolume(row.volume, row.name)
+    }
     function reveal(item) {
         const y = item.mapToItem(column, 0, 0).y
         if (y < flick.contentY)
@@ -69,6 +77,15 @@ Rectangle {
     Keys.onEnterPressed: activate(cursor)
     Keys.onRightPressed: activate(cursor)
     Keys.onEscapePressed: finished()
+    // E: ejects the drive the keyboard is on.
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_E && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+            const row = rows[cursor]
+            if (cursor >= devicesAt && cursor < peersAt && row && row.ejectable)
+                places.eject(row.volume)
+            event.accepted = true
+        }
+    }
 
     // The deepest place the current folder sits under.
     readonly property string activePath: {
@@ -112,6 +129,9 @@ Rectangle {
         readonly property bool dropHover: rowDrop.containsDrag
         property string status
         property color statusColor
+        // A drive that can be unmounted or ejected shows a button for it.
+        property bool ejectable: false
+        signal ejectClicked()
 
         Layout.fillWidth: true
         implicitHeight: 34
@@ -154,6 +174,24 @@ Rectangle {
                 color: row.active ? theme.brightForeground : theme.foreground
             }
             Text { visible: row.status.length > 0; text: row.status; color: row.statusColor; font.pixelSize: 11 }
+            // Its own click, so the row's isn't taken too.
+            Glyph {
+                visible: row.ejectable
+                name: "eject"
+                size: 16
+                color: ejectArea.containsMouse ? theme.brightForeground : theme.secondaryForeground
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Eject")
+                Accessible.onPressAction: row.ejectClicked()
+                MouseArea {
+                    id: ejectArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: row.ejectClicked()
+                }
+            }
         }
     }
 
@@ -305,8 +343,10 @@ Rectangle {
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: modelData.icon
-                    active: sidebar.activePath === modelData.path
-                    onClicked: sidebar.target.navigate(modelData.path)
+                    active: !!modelData.path && sidebar.activePath === modelData.path
+                    ejectable: !!modelData.ejectable
+                    onEjectClicked: places.eject(modelData.volume)
+                    onClicked: sidebar.openDevice(modelData)
                 }
             }
 

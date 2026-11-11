@@ -87,6 +87,16 @@ Places::Places(const QString &home, QObject *parent)
     // Tailnet peers come and go, drives get plugged in, Dropbox syncs: a
     // gentle poll keeps the sidebar honest without any background service.
     m_poll.setInterval(15000);
+    // Drives also say at once when they come, go or mount.
+    if (m_realHome) {
+        m_drives = new Drives(this);
+        connect(m_drives, &Drives::changed, this, [this] {
+            const QVariantList before = m_devices;
+            refreshDevices();
+            if (m_devices != before)
+                emit changed();
+        });
+    }
     connect(&m_poll, &QTimer::timeout, this, &Places::refresh);
     if (m_realHome)
         m_poll.start();
@@ -324,6 +334,28 @@ QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &s
     return drives;
 }
 
+QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives) {
+    QVariantList devices;
+    QStringList roots;
+    for (const Drives::Volume &v : volumes) {
+        QVariantMap device{{"name", v.name}, {"path", v.root}, {"icon", "drive"}, {"volume", v.id},
+                           {"ejectable", v.ejectable}};
+        devices << device;
+        if (!v.root.isEmpty())
+            roots << v.root;
+    }
+    for (const QVariant &drive : drives) {
+        if (!roots.contains(drive.toMap().value("path").toString()))
+            devices << drive;
+    }
+    return devices;
+}
+
+void Places::eject(const QString &volume) {
+    if (m_drives)
+        m_drives->eject(volume);
+}
+
 void Places::refreshDevices() {
     QList<Mount> mounts;
     auto volumes = QStorageInfo::mountedVolumes();
@@ -335,7 +367,8 @@ void Places::refreshDevices() {
             mounts << Mount{v.rootPath(), QString::fromUtf8(v.device()), QString::fromUtf8(v.fileSystemType()),
                             v.name()};
     }
-    m_devices = physicalDrives(mounts, QString::fromUtf8(QStorageInfo::root().device()));
+    const QVariantList mounted = physicalDrives(mounts, QString::fromUtf8(QStorageInfo::root().device()));
+    m_devices = m_drives ? devicesFrom(m_drives->volumes(), mounted) : mounted;
 }
 
 void Places::pollTailscale() {

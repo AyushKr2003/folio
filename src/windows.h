@@ -27,6 +27,11 @@ public:
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
 
+    // A drive at `root` is going away: every pane in it goes home and every
+    // preview of a file on it closes, so none holds it busy or shows a
+    // folder that's gone.
+    void leave(const QString &root);
+
     // Splits a window: a second folder pane, with its own folder, history
     // and selection, starting at `folder`. Returns the pane, for Main.qml to
     // put on the right.

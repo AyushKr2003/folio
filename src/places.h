@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include "drives.h"
+
 // The sidebar: the user's places (with Dropbox first-class when it's set up),
 // the drives, and the tailnet machines opened in Folio. Each list is small,
 // so it is handed to QML as plain maps rather than a model.
@@ -54,6 +56,12 @@ public:
     // The peers among `opened`, in its order, at most `limit` of them.
     static QVariantList onlineOf(const QStringList &opened, const QVariantList &peers, int limit = 6);
 
+    // Unmounts a drive from the Devices list, or ejects it when removable.
+    Q_INVOKABLE void eject(const QString &volume);
+
+    // GIO's drives; null for a test's home, which has none.
+    Drives *drives() const { return m_drives; }
+
     static QVariantList parseTailscale(const QByteArray &json);
     static QString parseDropboxStatus(const QByteArray &output);
 
@@ -66,6 +74,10 @@ public:
     // The physical drives among the mounts, one entry per drive: removable
     // and extra internal disks, never the system's own partitions.
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
+    // The Devices list: GIO's volumes in its order, each mounted one at its
+    // folder and each unmounted one by `volume` (no path until it's
+    // mounted), then any mounted drive GIO doesn't list (an fstab mount).
+    static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives);
 
 signals:
     void changed();
@@ -97,4 +109,5 @@ private:
     QString m_dropboxStatus;
     QProcess m_tailscale, m_dropbox;
     QTimer m_poll;
+    Drives *m_drives = nullptr;
 };

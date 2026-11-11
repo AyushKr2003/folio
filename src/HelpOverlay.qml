@@ -19,6 +19,7 @@ Rectangle {
         ["Drag on empty space", qsTr("Select with a rectangle (Alt adds)")],
         ["Ctrl+A", qsTr("Select everything")],
         ["Tab", qsTr("Move between the sidebar and the panes")],
+        ["E", qsTr("In the sidebar: eject the drive")],
         ["⏎", qsTr("Open")],
         ["Backspace", qsTr("Go to the parent folder")],
         ["Alt+← / Alt+→", qsTr("Back / forward (or the mouse's thumb buttons)")],

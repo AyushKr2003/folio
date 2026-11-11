@@ -1582,6 +1582,33 @@ private slots:
         QCOMPARE(drives.at(1).toMap().value("path").toString(), QString("/run/media/me/Photos"));
     }
 
+    void placesListDrivesNotMountedYet()
+    {
+        // GIO's volumes come first, in its order: one mounted, one not.
+        const QList<Drives::Volume> volumes{
+            {"Windows", "A4AE2807AE27D09A", "", false},
+            {"Photos", "1234-ABCD", "/run/media/me/Photos", true},
+        };
+        // What's mounted outside GIO (an fstab mount) follows; what it also
+        // lists isn't listed twice.
+        const QVariantList mounted{
+            QVariantMap{{"name", "Photos"}, {"path", "/run/media/me/Photos"}, {"icon", "drive"}},
+            QVariantMap{{"name", "archive"}, {"path", "/mnt/archive"}, {"icon", "drive"}},
+        };
+        const auto devices = Places::devicesFrom(volumes, mounted);
+        QCOMPARE(devices.size(), 3);
+        const QVariantMap windows = devices.at(0).toMap();
+        QCOMPARE(windows.value("name").toString(), QString("Windows"));
+        QVERIFY(windows.value("path").toString().isEmpty());
+        QCOMPARE(windows.value("volume").toString(), QString("A4AE2807AE27D09A"));
+        QCOMPARE(windows.value("ejectable").toBool(), false);
+        const QVariantMap photos = devices.at(1).toMap();
+        QCOMPARE(photos.value("path").toString(), QString("/run/media/me/Photos"));
+        QCOMPARE(photos.value("ejectable").toBool(), true);
+        QCOMPARE(devices.at(2).toMap().value("path").toString(), QString("/mnt/archive"));
+        QVERIFY(!devices.at(2).toMap().contains("volume"));
+    }
+
     void placesParseDropboxStatus()
     {
         QCOMPARE(Places::parseDropboxStatus("Up to date\n"), QString("synced"));

@@ -51,6 +51,13 @@ public:
     Q_INVOKABLE void back();
     Q_INVOKABLE void forward();
     Q_INVOKABLE void openPeer(const QString &host);
+    // Opens a drive from the sidebar's Devices, mounting it first when it
+    // isn't, which may ask for its passphrase or (through polkit) for
+    // permission.
+    Q_INVOKABLE void openVolume(const QString &volume, const QString &name);
+    // Mounts a drive just plugged in, staying where it is. False when this
+    // window is mounting something else already.
+    bool mountVolume(const QString &volume, const QString &name);
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
     // Good news that needs no answer ("Link copied"): shown for a few
@@ -76,6 +83,9 @@ public:
     Q_INVOKABLE void newWindow();
     // Keeps an open preview on the item selected in the grid.
     Q_INVOKABLE void followSelection(const QString &path);
+    // A drive at `root` is going away: closes the preview if it shows a file
+    // on it, and waits for it to let go, so it doesn't keep the drive busy.
+    void closePreviewUnder(const QString &root);
 
     // Called for org.freedesktop.FileManager1: open a folder, or open the
     // folder holding a file and select it.
@@ -119,6 +129,9 @@ private:
     QString m_pendingSelection;
     Mounter m_mounter;
     QString m_mountHost;
+    // What's being mounted, when it's a drive, and whether to go there.
+    QString m_mountDrive;
+    bool m_mountOpens = false;
     QProcess m_preview;
     // Set while Folio closes the preview itself, which isn't a crash.
     bool m_closingPreview = false;

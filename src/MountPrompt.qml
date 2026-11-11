@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Layouts
 
 // GVfs's password request while connecting to another machine whose keys
-// aren't set up, put to the user in the window. The wording comes from GVfs,
-// already translated.
+// aren't set up, or an encrypted drive's passphrase, put to the user in the
+// window. The wording comes from GVfs, already translated.
 FolioDialog {
     id: prompt
 
     readonly property var mounter: backend.mounter
 
-    title: qsTr("Sign in")
+    title: mounter.drive ? qsTr("Unlock") : qsTr("Sign in")
     cardWidth: 600
     spacing: 18
     visible: mounter.asking
@@ -20,7 +20,7 @@ FolioDialog {
     onVisibleChanged: {
         password.text = ""
         if (visible) {
-            user.text = mounter.user
+            user.text = mounter.drive ? "" : mounter.user
             password.forceActiveFocus()
         }
     }
@@ -44,12 +44,14 @@ FolioDialog {
     PlainField {
         id: user
         Layout.fillWidth: true
+        // A drive's passphrase has no user to go with it.
+        visible: !prompt.mounter.drive
         placeholderText: qsTr("User")
     }
     PlainField {
         id: password
         Layout.fillWidth: true
-        placeholderText: qsTr("Password")
+        placeholderText: prompt.mounter.drive ? qsTr("Passphrase") : qsTr("Password")
         echoMode: TextInput.Password
         onAccepted: prompt.submit()
     }
@@ -63,7 +65,7 @@ FolioDialog {
             onClicked: prompt.mounter.cancel()
         }
         PlainButton {
-            text: qsTr("Connect")
+            text: prompt.mounter.drive ? qsTr("Unlock") : qsTr("Connect")
             primary: true
             onClicked: prompt.submit()
         }

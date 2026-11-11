@@ -1,5 +1,6 @@
 #include "windows.h"
 
+#include <QDir>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWindow>
@@ -61,6 +62,19 @@ Backend *Windows::open(const QString &folder, const QString &select) {
 
 Backend *Windows::latest() const {
     return m_windows.isEmpty() ? nullptr : m_windows.first().main.backend;
+}
+
+void Windows::leave(const QString &root) {
+    for (const Window &w : m_windows) {
+        for (Backend *backend : {w.main.backend, w.split.backend}) {
+            if (!backend)
+                continue;
+            backend->closePreviewUnder(root);
+            const QString path = backend->path();
+            if (path == root || path.startsWith(root + "/"))
+                backend->navigate(QDir::homePath());
+        }
+    }
 }
 
 void Windows::close(QObject *window) {

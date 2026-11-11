@@ -12,6 +12,7 @@
 #include <QUrl>
 #include <cstdio>
 
+#include "backend.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
 #include "places.h"
@@ -146,6 +147,26 @@ int main(int argc, char *argv[]) {
     if (!windows.open(start, select))
         return 1;
     FileManager1::registerOn(&windows);
+
+    if (Drives *drives = places.drives()) {
+        QObject::connect(drives, &Drives::leaving, &windows, &Windows::leave);
+        // A drive plugged in mounts through the last window used, which can
+        // ask for an encrypted drive's passphrase; with none free, it mounts
+        // without asking.
+        QObject::connect(drives, &Drives::plugged, &windows, [&windows, drives](const QString &id, const QString &name) {
+            Backend *backend = windows.latest();
+            if (!backend || !backend->mountVolume(id, name))
+                drives->mountQuietly(id);
+        });
+        QObject::connect(drives, &Drives::notice, &windows, [&windows](const QString &notice) {
+            if (Backend *backend = windows.latest())
+                backend->showNotice(notice);
+        });
+        QObject::connect(drives, &Drives::failed, &windows, [&windows](const QString &message) {
+            if (Backend *backend = windows.latest())
+                backend->showMessage(message);
+        });
+    }
 
     return app.exec();
 }
