@@ -2,6 +2,7 @@
 #include "drives.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QPointer>
 #include <QTimer>
@@ -14,9 +15,19 @@
 
 namespace {
 
-// The encrypted volume `id` names is unlocked: the kernel shows its
-// cleartext (dm-crypt) device holding it.
-bool unlockedNow(const QString &id) {
+// A block device holds a filesystem, by what udev found on it.
+bool holdsFilesystem(const QString &name) {
+    QFile dev(QStringLiteral("/sys/class/block/%1/dev").arg(name));
+    if (!dev.open(QIODevice::ReadOnly))
+        return false;
+    QFile data(QStringLiteral("/run/udev/data/b%1").arg(QString::fromLatin1(dev.readAll()).trimmed()));
+    return data.open(QIODevice::ReadOnly) && data.readAll().contains("\nE:ID_FS_USAGE=filesystem\n");
+}
+
+// The encrypted volume `id` names unlocked (the kernel shows a cleartext,
+// dm-crypt, device holding it) and nothing inside is a filesystem: no
+// filesystem at all, or LVM. A filesystem inside means it's only slow.
+bool unlockedEmpty(const QString &id) {
     GVolume *volume = Drives::find(id);
     if (!volume)
         return false;
@@ -24,8 +35,16 @@ bool unlockedNow(const QString &id) {
     const QString name = QFileInfo(QFileInfo(QString::fromUtf8(device ? device : "")).canonicalFilePath()).fileName();
     g_free(device);
     g_object_unref(volume);
-    return !name.isEmpty()
-        && !QDir(QStringLiteral("/sys/class/block/%1/holders").arg(name)).isEmpty(QDir::NoDotAndDotDot | QDir::AllEntries);
+    if (name.isEmpty())
+        return false;
+    const QStringList holders = QDir(QStringLiteral("/sys/class/block/%1/holders").arg(name))
+                                    .entryList(QDir::NoDotAndDotDot | QDir::AllEntries);
+    if (holders.isEmpty())
+        return false;
+    for (const QString &holder : holders)
+        if (holdsFilesystem(holder))
+            return false;
+    return true;
 }
 
 } // namespace
@@ -109,10 +128,11 @@ struct MounterCallbacks {
 void Mounter::report(bool ok, bool already, const QString &local, const GError *error) {
     // Given up on after the passphrase went in, or GVfs calling it
     // cancelled when nobody did: either the drive unlocked with nothing to
-    // mount inside, or it's still working. Which, the kernel says.
+    // mount inside, or it's still working (unlocking, or mounting a slow
+    // filesystem). Which, the kernel and udev say.
     const bool stopped = m_drive && m_answered && !ok && !already
         && (!error || g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED));
-    const bool unlocked = stopped && unlockedNow(m_volume);
+    const bool empty = stopped && unlockedEmpty(m_volume);
     const bool timedOut = stopped && m_lost;
     finish();
     // Mounted earlier (by Folio or another app) is as good as now.
@@ -129,9 +149,8 @@ void Mounter::report(bool ok, bool already, const QString &local, const GError *
         emit failed(QString());
         return;
     }
-    // An encrypted drive that unlocked and then didn't mount has nothing
-    // udisks can mount inside (no filesystem, or LVM).
-    if (unlocked) {
+    // An encrypted drive that unlocked with nothing udisks can mount inside.
+    if (empty) {
         emit failed(tr("it unlocked, but there's nothing on it that can be mounted"));
         return;
     }
