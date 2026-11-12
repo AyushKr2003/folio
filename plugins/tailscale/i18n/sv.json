@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Kunde inte skicka till %1: %2",
+  "Host": "Värd",
+  "Machines": "Maskiner",
+  "No machines are online": "Inga maskiner är online",
+  "Sending to %1…": "Skickar till %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

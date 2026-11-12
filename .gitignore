@@ -1,4 +1,3 @@
 /build/
-/pkgbuild/pkg/
-/pkgbuild/src/
 *.pkg.tar.*
+__pycache__/

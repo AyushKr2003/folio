@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Δεν ήταν δυνατή η αποστολή στο %1: %2",
+  "Host": "Κεντρικός υπολογιστής",
+  "Machines": "Συσκευές",
+  "No machines are online": "Καμία συσκευή δεν είναι συνδεδεμένη",
+  "Sending to %1…": "Αποστολή στο %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

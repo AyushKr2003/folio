@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "無法傳送至 %1：%2",
+  "Host": "主機",
+  "Machines": "機器",
+  "No machines are online": "沒有機器上線",
+  "Sending to %1…": "正在傳送至 %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

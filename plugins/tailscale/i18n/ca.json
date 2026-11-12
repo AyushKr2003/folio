@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "No s'ha pogut enviar a %1: %2",
+  "Host": "Amfitrió",
+  "Machines": "Màquines",
+  "No machines are online": "No hi ha cap màquina en línia",
+  "Sending to %1…": "S'està enviant a %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

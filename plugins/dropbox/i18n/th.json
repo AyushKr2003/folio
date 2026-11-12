@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "รับลิงก์ Dropbox สำหรับ %1 ไม่ได้: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "ลิงก์ Dropbox",
+  "Dropbox link for %1 copied.": "คัดลอกลิงก์ Dropbox ของ %1 แล้ว",
+  "Getting a Dropbox link for %1…": "กำลังรับลิงก์ Dropbox สำหรับ %1…",
+  "stopped": "หยุดแล้ว",
+  "syncing": "กำลังซิงค์"
+}

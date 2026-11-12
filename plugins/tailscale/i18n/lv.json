@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Neizdevās nosūtīt uz %1: %2",
+  "Host": "Resursdators",
+  "Machines": "Ierīces",
+  "No machines are online": "Neviena ierīce nav tiešsaistē",
+  "Sending to %1…": "Sūta uz %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

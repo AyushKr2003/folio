@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1-এর জন্য Dropbox লিঙ্ক পাওয়া যায়নি: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox লিঙ্ক",
+  "Dropbox link for %1 copied.": "%1-এর Dropbox লিঙ্ক কপি করা হয়েছে।",
+  "Getting a Dropbox link for %1…": "%1-এর জন্য Dropbox লিঙ্ক আনা হচ্ছে…",
+  "stopped": "বন্ধ আছে",
+  "syncing": "সিঙ্ক হচ্ছে"
+}

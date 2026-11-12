@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1의 Dropbox 링크를 가져올 수 없습니다: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox 링크",
+  "Dropbox link for %1 copied.": "%1의 Dropbox 링크를 복사했습니다.",
+  "Getting a Dropbox link for %1…": "%1의 Dropbox 링크 가져오는 중…",
+  "stopped": "중지됨",
+  "syncing": "동기화 중"
+}

@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Kon geen Dropbox-link voor %1 ophalen: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox-link",
+  "Dropbox link for %1 copied.": "Dropbox-link voor %1 gekopieerd.",
+  "Getting a Dropbox link for %1…": "Dropbox-link voor %1 ophalen…",
+  "stopped": "gestopt",
+  "syncing": "synchroniseren"
+}

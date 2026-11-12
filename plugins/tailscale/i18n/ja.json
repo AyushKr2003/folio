@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "%1 に送信できませんでした: %2",
+  "Host": "ホスト",
+  "Machines": "マシン",
+  "No machines are online": "オンラインのマシンはありません",
+  "Sending to %1…": "%1 に送信中…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

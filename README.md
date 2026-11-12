@@ -6,9 +6,10 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 
 - **Three views**: a grid with real previews, a list, and Finder-style columns. Ctrl+1/2/3 switches.
 - **Space previews** pictures, video, audio, PDFs, text and Markdown at full size, in their own window.
-- **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives (mounted or not, as Nautilus lists them: a click mounts one, a drive plugged in mounts by itself, and one can be ejected from there), and the machines on your tailnet, which open over SFTP.
+- **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives (mounted or not, as Nautilus lists them: a click mounts one, and a drive plugged in mounts by itself), and the machines on your tailnet, which open over SFTP.
 - **Right-click** (or Alt+Enter) to open with another app, rename, duplicate, compress, share by Dropbox link, Taildrop or LocalSend, and delete. Copy and paste work with other apps, and nothing is ever overwritten.
 - **Split** the window in two with Ctrl+Alt+N to move things between folders.
+- **Plugins** add sidebar sections, Share entries and views; Tailscale, Dropbox and LocalSend are plugins too. [docs/plugins.md](docs/plugins.md) shows how to write one.
 
 | Columns | Preview |
 | --- | --- |
@@ -26,14 +27,14 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Ctrl+C / X / V | Copy, cut, paste |
 | F2, Delete | Rename, move to the trash |
 | Ctrl+Shift+N | New folder |
-| Ctrl+D | Pin the folder |
+| Ctrl+P | Pin the folder |
 | Ctrl+N, Ctrl+Alt+N | New window, split |
-| Tab | Sidebar and back |
+| Tab, Shift+Tab | Sidebar, panes and details |
 | ? | Every other shortcut |
 
 ## Building
 
-Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, `bin/test` runs the tests, and `bin/install` builds and installs the Arch package. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).
+Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, and `bin/test` runs the tests. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).
 
 ## License
 

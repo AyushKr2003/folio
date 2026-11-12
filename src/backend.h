@@ -8,30 +8,38 @@
 
 #include "foldermodel.h"
 #include "mounter.h"
+#include "plugins.h"
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
-// (opening files, mounting a tailnet machine).
+// (opening files and plugins' items, mounting other machines, running
+// plugins' actions).
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(FolderModel *folder READ folder CONSTANT)
     Q_PROPERTY(Mounter *mounter READ mounter CONSTANT)
     Q_PROPERTY(QString path READ path NOTIFY pathChanged)
-    Q_PROPERTY(QString title READ title NOTIFY pathChanged)
-    Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY pathChanged)
+    // What the place is called: changes with the path, and with a plugin's
+    // labels (a poll, a language switch) while its view is shown.
+    Q_PROPERTY(QString title READ title NOTIFY placeChanged)
+    Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY placeChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details pane shows beyond the listing, for the item last
-    // given to describe(): its type's name, and once they've been read in
-    // the background, a picture's dimensions, a text's opening lines, or a
-    // trashed item's origin and deletion time.
+    // given to describe(), once they've been read in the background: a
+    // picture's dimensions, a text's opening lines, or a trashed item's
+    // origin and deletion time; and under `plugins`, plugins' rows about a
+    // file or folder, [[label, value]...].
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
     ~Backend() override;
+
+    // The plugins whose views, items and actions this window offers.
+    void setPlugins(Plugins *plugins);
 
     FolderModel *folder() { return &m_folder; }
     Mounter *mounter() { return &m_mounter; }
@@ -42,7 +50,8 @@ public:
     bool canForward() const { return m_index + 1 < m_history.size(); }
     QString message() const { return m_message; }
     QString notice() const { return m_notice; }
-    QString busy() const { return m_busy; }
+    // Mounting, or else the latest plugin action still running.
+    QString busy() const { return m_busy.isEmpty() && !m_runs.isEmpty() ? m_runs.last().second : m_busy; }
     bool previewing() const { return m_preview.state() != QProcess::NotRunning; }
 
     Q_INVOKABLE void navigate(const QString &path);
@@ -50,7 +59,11 @@ public:
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void back();
     Q_INVOKABLE void forward();
-    Q_INVOKABLE void openPeer(const QString &host);
+    // Runs a plugin's action on the paths, sent to `target` (an item's id)
+    // for a submenu, showing its busy text meanwhile and what it says when
+    // it's done.
+    Q_INVOKABLE void perform(const QString &plugin, const QString &action, const QStringList &paths,
+                             const QString &target = {});
     // Opens a drive from the sidebar's Devices, mounting it first when it
     // isn't, which may ask for its passphrase or (through polkit) for
     // permission.
@@ -65,14 +78,18 @@ public:
     Q_INVOKABLE void showNotice(const QString &notice);
     // Selects `name` the next time the folder loads (after file work).
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
-    QVariantMap details() const { return m_details; }
+    QVariantMap details() const;
     Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
+    // The system's own name for a type ("JPEG image"), in the language of
+    // the moment.
+    Q_INVOKABLE static QString typeName(const QString &mime);
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
     // The path as it's shown for editing (~ for home), going to a typed
-    // path (a folder, or a file to select in its folder; ~ works), and
-    // completing the last part of one to a folder name.
+    // path (a folder, or a file to select in its folder; ~ works; or a
+    // server's address, connecting to it), and completing the last part of
+    // one to a folder name.
     Q_INVOKABLE QString typedPath() const;
     Q_INVOKABLE bool goTyped(const QString &text);
     Q_INVOKABLE QString completePath(const QString &text) const;
@@ -83,9 +100,11 @@ public:
     Q_INVOKABLE void newWindow();
     // Keeps an open preview on the item selected in the grid.
     Q_INVOKABLE void followSelection(const QString &path);
-    // A drive at `root` is going away: closes the preview if it shows a file
-    // on it, and waits for it to let go, so it doesn't keep the drive busy.
-    void closePreviewUnder(const QString &root);
+    // Omarchy's Super+Return opens a terminal in the focused window's working
+    // directory, so the process works in the folder this pane shows, from
+    // now on as it moves, until another pane asks for it. Views and servers
+    // aren't local folders and leave it where it was.
+    Q_INVOKABLE void keepWorkingDirectory();
 
     // Called for org.freedesktop.FileManager1: open a folder, or open the
     // folder holding a file and select it.
@@ -95,9 +114,13 @@ public:
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
+    // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
+    // mounts it, or empty when the text isn't one.
+    static QString serverAddress(const QString &text);
 
 signals:
     void pathChanged();
+    void placeChanged();
     void messageChanged();
     void noticeChanged();
     void busyChanged();
@@ -106,8 +129,6 @@ signals:
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
-    // A machine was asked for, for the sidebar to remember it by.
-    void peerOpened(const QString &host);
 
 private:
     static QString gvfsRoot();
@@ -117,6 +138,25 @@ private:
     bool go(const QString &path, bool record);
     void setMessage(const QString &message);
     void setBusy(const QString &busy);
+    // Opening a plugin's item: a folder, a mount or a command.
+    void openItem(const QString &path);
+    // Mounts `url` through GVfs (a plugin's machine, or a server typed in
+    // the path bar) and goes where it points once it's mounted.
+    void mount(const QString &url, const QString &name, bool verified);
+    // Goes to `folder` on a mount: a bare server's to the folder at home's
+    // path on it when there is one, a file's to its folder, selected.
+    void arrive(const QString &folder);
+    // A plugin action finished: its busy text goes, and what it asks for
+    // happens.
+    void finish(int run, const Plugins::Result &result);
+    // Plugins' rows about the item described: those known, then the rest
+    // as their commands answer. While `keep`, rows already shown stay until
+    // there are others, so the same item asked about again doesn't flicker.
+    void showPluginRows(bool keep);
+    // Asks plugins about the item described; false when nothing's coming.
+    bool askPlugins();
+    // A GVfs mount's name on screen: its plugin item's name, or its host.
+    QString mountName(const QString &mount) const;
 
     QString m_home;
     FolderModel m_folder;
@@ -127,10 +167,17 @@ private:
     QTimer m_noticeTimer;
     QString m_busy;
     QString m_pendingSelection;
+    Plugins *m_plugins = nullptr;
     Mounter m_mounter;
-    QString m_mountHost;
-    // What's being mounted, when it's a drive, and whether to go there.
-    QString m_mountDrive;
+    // What's being connected to, as the window names it, and whether it's
+    // a bare server, which lands in the matching home folder.
+    QString m_mountName;
+    bool m_mountBare = false;
+    // The plugin actions running, each with its busy text, oldest first.
+    QList<std::pair<int, QString>> m_runs;
+    int m_lastRun = 0;
+    // What's being mounted is a drive, and whether to go there once it is.
+    bool m_mountDrive = false;
     bool m_mountOpens = false;
     QProcess m_preview;
     // Set while Folio closes the preview itself, which isn't a crash.
@@ -139,7 +186,13 @@ private:
     QVariantMap m_details;
     // Whose details they are (the path and its type, as a file can be
     // replaced by a folder of the same name), and the newest describe(),
-    // which a reading has to match to be shown.
+    // which a reading has to match to be shown, or even to start.
     QString m_described;
-    quint64 m_describing = 0;
+    // The real file or folder described, which plugins are asked about.
+    QVariantMap m_pluginItem;
+    QVariantList m_pluginRows;
+    std::shared_ptr<std::atomic<quint64>> m_describing = std::make_shared<std::atomic<quint64>>(0);
+    // The pane the working directory follows: the one used last.
+    static inline Backend *s_working = nullptr;
+    void moveWorkingDirectory();
 };

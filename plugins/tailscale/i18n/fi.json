@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Ei voitu lähettää kohteeseen %1: %2",
+  "Host": "Isäntä",
+  "Machines": "Koneet",
+  "No machines are online": "Yksikään kone ei ole verkossa",
+  "Sending to %1…": "Lähetetään kohteeseen %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

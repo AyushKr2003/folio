@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Impossible d’envoyer à %1 : %2",
+  "Host": "Hôte",
+  "Machines": "Machines",
+  "No machines are online": "Aucune machine en ligne",
+  "Sending to %1…": "Envoi à %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

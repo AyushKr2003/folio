@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Không thể lấy liên kết Dropbox cho %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Liên kết Dropbox",
+  "Dropbox link for %1 copied.": "Đã sao chép liên kết Dropbox của %1.",
+  "Getting a Dropbox link for %1…": "Đang lấy liên kết Dropbox cho %1…",
+  "stopped": "đã dừng",
+  "syncing": "đang đồng bộ"
+}

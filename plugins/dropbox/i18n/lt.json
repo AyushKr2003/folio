@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Nepavyko gauti Dropbox nuorodos į %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox nuoroda",
+  "Dropbox link for %1 copied.": "Nukopijuota Dropbox nuoroda į %1.",
+  "Getting a Dropbox link for %1…": "Gaunama Dropbox nuoroda į %1…",
+  "stopped": "sustabdyta",
+  "syncing": "sinchronizuojama"
+}

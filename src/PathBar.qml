@@ -9,8 +9,8 @@ Rectangle {
     property bool previewVisible: true
     property bool previewFits: true
     property string viewMode: "grid"
-    // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
-    // Tab completes a folder name.
+    // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
+    // server's address), Escape cancels, Tab completes a folder name.
     property bool editing: false
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
@@ -74,6 +74,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.editing
             font.pixelSize: 14
+            placeholderText: qsTr("A folder, or a server's address like sftp://host/")
             onAccepted: {
                 if (backend.goTyped(text))
                     bar.stopEditing()
@@ -91,17 +92,24 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
-            rightPadding: scope.implicitWidth + 24
+            // Room at the end for where it searches; padding isn't mirrored.
+            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing. The tailnet has nothing
-            // below it.
+            // placeholder, it stays while typing. Plugins' views have
+            // nothing below them.
             Text {
                 id: scope
-                readonly property string here: backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
+                // Recents, Trash and plugins' views are named in C++, which
+                // retranslating QML doesn't redo.
+                readonly property string here: {
+                    translator.language
+                    return backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
+                }
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: backend.path === "tailnet:" ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
@@ -124,20 +132,28 @@ Rectangle {
             visible: !bar.editing && !bar.searching
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: crumbs.implicitWidth
+            contentWidth: Math.max(width, crumbs.implicitWidth)
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             // Long paths keep their end in view; that's where you are.
-            onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
-            onWidthChanged: contentX = Math.max(0, contentWidth - width)
+            // Mirrored, the end is on the left.
+            function revealEnd() { contentX = LayoutMirroring.enabled ? 0 : Math.max(0, contentWidth - width) }
+            onContentWidthChanged: revealEnd()
+            onWidthChanged: revealEnd()
+            LayoutMirroring.onEnabledChanged: revealEnd()
 
             Row {
                 id: crumbs
+                // A Row isn't placed by its Flickable, so it's moved to the
+                // right edge by hand when mirrored.
+                x: LayoutMirroring.enabled ? parent.width - width : 0
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
                 Repeater {
-                    model: backend.crumbs
+                    // Recents, Trash and plugins' views are named in C++, which
+                    // retranslating QML doesn't redo.
+                    model: { translator.language; return backend.crumbs }
                     Row {
                         id: crumb
                         required property var modelData
@@ -145,7 +161,8 @@ Rectangle {
                         readonly property bool last: index === backend.crumbs.length - 1
                         spacing: 10
                         Text {
-                            visible: crumb.index > 0
+                            // No separator after / itself: "/ run", not "/ / run".
+                            visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
                             color: Qt.alpha(theme.foreground, 0.35)
                             font.pixelSize: 14
@@ -186,7 +203,8 @@ Rectangle {
             glyph: sortMenu.current.glyph
             text: sortMenu.current.tip
             active: sortMenu.visible
-            onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
+            // Under the button, reaching toward the files.
+            onClicked: sortMenu.popup(sortButton, LayoutMirroring.enabled ? sortButton.width - sortMenu.width : 0, sortButton.height + 4)
         }
         SortMenu { id: sortMenu }
         IconButton {

@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1 Dropboxi linki ei õnnestunud saada: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropboxi link",
+  "Dropbox link for %1 copied.": "%1 Dropboxi link kopeeriti.",
+  "Getting a Dropbox link for %1…": "%1 Dropboxi lingi hankimine…",
+  "stopped": "peatatud",
+  "syncing": "sünkroonimine"
+}

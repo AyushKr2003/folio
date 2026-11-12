@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "%1 को भेजा नहीं जा सका: %2",
+  "Host": "होस्ट",
+  "Machines": "मशीनें",
+  "No machines are online": "कोई मशीन ऑनलाइन नहीं है",
+  "Sending to %1…": "%1 को भेजा जा रहा है…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

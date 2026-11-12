@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "تعذّر الإرسال إلى %1: %2",
+  "Host": "المضيف",
+  "Machines": "الأجهزة",
+  "No machines are online": "لا توجد أجهزة متصلة",
+  "Sending to %1…": "جارٍ الإرسال إلى %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

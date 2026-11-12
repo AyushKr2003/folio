@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "%1 makinesine gönderilemedi: %2",
+  "Host": "Ana Bilgisayar",
+  "Machines": "Makineler",
+  "No machines are online": "Çevrimiçi makine yok",
+  "Sending to %1…": "%1 makinesine gönderiliyor…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

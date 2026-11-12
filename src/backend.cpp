@@ -2,12 +2,16 @@
 #include "fileops.h"
 #include "previewer.h"
 
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QGuiApplication>
 #include <QImageReader>
 #include <QMimeDatabase>
+#include <QPointer>
+#include <QStorageInfo>
 #include <QUrl>
 #include <QtConcurrent>
 #include <unistd.h>
@@ -20,28 +24,28 @@ Backend::Backend(const QString &home, QObject *parent)
         m_notice.clear();
         emit noticeChanged();
     });
-    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &root) {
+    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &folder) {
         setBusy({});
-        if (!m_mountDrive.isEmpty()) {
+        // A drive opens at its top, or (plugged in) only says it's there.
+        if (std::exchange(m_mountDrive, false)) {
             if (m_mountOpens)
-                navigate(root);
+                navigate(folder);
             else
-                showNotice(tr("%1 is mounted").arg(m_mountDrive));
-            m_mountDrive.clear();
+                showNotice(tr("%1 is mounted").arg(m_mountName));
             return;
         }
-        // Land in the matching home folder when the other machine has one,
-        // which on a tailnet of one person's machines it usually does.
-        const QString remoteHome = root + QDir::homePath();
-        navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
+        // The mount's folder is known now, so the plugin's row can light up.
+        if (m_plugins)
+            m_plugins->mountsChanged();
+        arrive(folder);
     });
     connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
         // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
-            setMessage(m_mountDrive.isEmpty() ? tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error)
-                                              : tr("Couldn't open %1: %2").arg(m_mountDrive, error));
-        m_mountDrive.clear();
+            setMessage(m_mountDrive ? tr("Couldn't open %1: %2").arg(m_mountName, error)
+                                    : tr("Couldn't connect to %1: %2").arg(m_mountName, error));
+        m_mountDrive = false;
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
@@ -64,26 +68,30 @@ Backend::Backend(const QString &home, QObject *parent)
 }
 
 QString Backend::gvfsRoot() {
-    return QStringLiteral("/run/user/%1/gvfs").arg(getuid());
+    return Mounter::root();
 }
 
 // What a gvfs mount is called on screen: the host or server from its
-// folder's name ("sftp:host=nas,user=me", "smb-share:server=nas,..."), and only the machine's own name for a tailnet
-// address, since every machine on it shares the "tailXXXX.ts.net" part.
+// folder's name ("sftp:host=nas,user=me", "smb-share:server=nas,...").
 QString Backend::mountLabel(const QString &mountFolder) {
     QString host = mountFolder;
     for (const QString &field : mountFolder.section(':', 1).split(','))
         if (field.startsWith("host=") || field.startsWith("server="))
             host = field.section('=', 1);
-    return host.endsWith(".ts.net") ? host.section('.', 0, 0) : host;
+    return host;
+}
+
+QString Backend::mountName(const QString &mount) const {
+    const QString name = m_plugins ? m_plugins->nameForMount(mount) : QString();
+    return name.isEmpty() ? mountLabel(QFileInfo(mount).fileName()) : name;
 }
 
 QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return tr("Recents");
-    if (p == FolderModel::tailnetPath())
-        return tr("Tailnet");
+    if (FolderModel::isPluginView(p))
+        return m_plugins ? m_plugins->views().value(p).toMap().value("title").toString() : p;
     if (p == trashPath())
         return tr("Trash");
     if (p == m_home)
@@ -91,18 +99,34 @@ QString Backend::title() const {
     if (p == "/")
         return tr("Computer");
     if (QFileInfo(p).absolutePath() == gvfsRoot())
-        return mountLabel(QFileInfo(p).fileName());
+        return mountName(p);
     return QFileInfo(p).fileName();
+}
+
+// Where the removable or extra drive holding `path` is mounted, when it's one
+// (under /run/media, /media or /mnt), so its path starts at its name rather
+// than at /run/media/<user>/.
+static QString driveRoot(const QString &path) {
+    static const QStringList places{"/run/media/", "/media/", "/mnt/"};
+    for (const QString &place : places) {
+        if (!path.startsWith(place))
+            continue;
+        const QString root = QStorageInfo(path).rootPath();
+        if (root.startsWith(place) && (path == root || path.startsWith(root + "/")))
+            return root;
+    }
+    return {};
 }
 
 QVariantList Backend::crumbs() const {
     // Breadcrumbs start at the nearest root that means something to a person:
-    // ~ for home, a tailnet machine's name for its mount, / otherwise.
+    // ~ for home, another machine's name for its mount, a drive's name for
+    // a drive, / otherwise.
     const QString p = path();
     if (p == FolderModel::recentPath())
         return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
-    if (p == FolderModel::tailnetPath())
-        return {QVariantMap{{"name", tr("Tailnet")}, {"path", p}}};
+    if (FolderModel::isPluginView(p))
+        return {QVariantMap{{"name", title()}, {"path", p}}};
     // The trash's files folder is an implementation detail; it's "Trash".
     if (p == trashPath())
         return {QVariantMap{{"name", tr("Trash")}, {"path", p}}};
@@ -114,7 +138,10 @@ QVariantList Backend::crumbs() const {
     } else if (p.startsWith(gvfsRoot() + "/")) {
         const QString mount = p.section('/', 0, 5);
         base = mount;
-        label = mountLabel(mount.section('/', -1));
+        label = mountName(mount);
+    } else if (const QString drive = driveRoot(p); !drive.isEmpty()) {
+        base = drive;
+        label = QFileInfo(drive).fileName();
     }
 
     QVariantList crumbs{QVariantMap{{"name", label}, {"path", base}}};
@@ -137,7 +164,14 @@ bool Backend::go(const QString &path, bool record) {
     // spec lets anyone create it, so Trash always opens.
     if (clean == trashPath())
         QDir().mkpath(clean);
-    if (!FolderModel::isView(clean) && !QFileInfo(clean).isDir()) {
+    // A view is there only while its plugin is.
+    if (FolderModel::isPluginView(clean) && !(m_plugins && m_plugins->hasView(clean))) {
+        setMessage(tr("%1 doesn't exist.").arg(clean));
+        return false;
+    }
+    // A relative path (from a plugin) would be taken from wherever Folio
+    // was started, which means nothing here.
+    if (!FolderModel::isView(clean) && (QDir::isRelativePath(clean) || !QFileInfo(clean).isDir())) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
         return false;
     }
@@ -149,18 +183,31 @@ bool Backend::go(const QString &path, bool record) {
         m_index = m_history.size() - 1;
     }
     m_folder.setPath(clean);
+    if (s_working == this)
+        moveWorkingDirectory();
     emit pathChanged();
+    emit placeChanged();
     return true;
 }
 
+void Backend::keepWorkingDirectory() {
+    s_working = this;
+    moveWorkingDirectory();
+}
+
+void Backend::moveWorkingDirectory() {
+    const QString p = path();
+    if (!FolderModel::isView(p) && !p.startsWith(gvfsRoot() + "/"))
+        QDir::setCurrent(p);
+}
+
 void Backend::open(const QString &path) {
-    // A machine in the tailnet view opens as itself, over SFTP.
-    if (path.startsWith(FolderModel::tailnetPath()) && path != FolderModel::tailnetPath()) {
-        openPeer(path.mid(FolderModel::tailnetPath().size()));
+    if (path.startsWith("plugin:") && !FolderModel::isView(path)) {
+        openItem(path);
         return;
     }
     const QFileInfo info(path);
-    if (info.isDir()) {
+    if (FolderModel::isView(path) || info.isDir()) {
         navigate(path);
         return;
     }
@@ -171,8 +218,8 @@ void Backend::open(const QString &path) {
 }
 
 void Backend::goUp() {
-    // Recents, the tailnet and the trash are places of their own: nothing
-    // above them.
+    // Recents, plugins' views and the trash are places of their own:
+    // nothing above them.
     if (FolderModel::isView(path()) || path() == trashPath())
         return;
     const QString parent = QFileInfo(path()).absolutePath();
@@ -206,41 +253,123 @@ void Backend::forward() {
         --m_index;
 }
 
-void Backend::openPeer(const QString &host) {
+void Backend::setPlugins(Plugins *plugins) {
+    m_plugins = plugins;
+    // A view's title and a mount's name come from the plugins.
+    connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
+    connect(plugins, &Plugins::detailsChanged, this, [this] { showPluginRows(askPlugins()); });
+}
+
+void Backend::openItem(const QString &path) {
+    const auto item = m_plugins ? m_plugins->item(path) : std::nullopt;
+    if (!item || m_mounter.busy())
+        return;
+    // Remembered as it's asked for, not once it's open: a machine that
+    // didn't open (asleep) is still the one to try again, and the sidebar
+    // only shows it while its plugin lists it.
+    m_plugins->remember(path);
+    const QJsonObject open = item->open;
+    if (open.contains("path")) {
+        navigate(Plugins::expand(open.value("path").toString()));
+    } else if (open.contains("mount")) {
+        mount(open.value("mount").toString(), item->name, open.value("verified").toBool());
+    } else if (open.contains("run")) {
+        const int run = ++m_lastRun;
+        QPointer<Backend> self(this);
+        m_plugins->run(path, [self, run](const Plugins::Result &result) {
+            if (self)
+                self->finish(run, result);
+        });
+        // It never finishes before this returns, so its busy text is up first.
+        m_runs.append({run, tr("Opening %1…").arg(item->name)});
+        emit busyChanged();
+    }
+}
+
+void Backend::mount(const QString &url, const QString &name, bool verified) {
     if (m_mounter.busy())
         return;
-    // Remembered as it's asked for, not once it's mounted: a machine that
-    // didn't open (asleep, or without Tailscale SSH yet) is still the one
-    // to try again, and the sidebar only shows it while it's online.
-    emit peerOpened(host);
-    const QString root = gvfsRoot() + "/sftp:host=" + host;
-    if (QFileInfo(root).isDir()) {
-        const QString remoteHome = root + QDir::homePath();
-        navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
+    m_mountDrive = false;
+    m_mountBare = QUrl(url).path().isEmpty() || QUrl(url).path() == "/";
+    m_mountName = name;
+    // Mounted already (by Folio or another app): straight there.
+    const QString folder = Mounter::destinationFor(url);
+    if (!folder.isEmpty() && QFileInfo::exists(folder)) {
+        arrive(folder);
         return;
     }
-    // SFTP over the tailnet: with Tailscale SSH on the other machine there
-    // are no keys or passwords to manage, and GVfs makes the mount look like
-    // any other folder.
-    m_mountHost = host;
-    m_mountDrive.clear();
-    setBusy(tr("Connecting to %1…").arg(host));
-    m_mounter.mount("sftp://" + host + "/");
+    setBusy(tr("Connecting to %1…").arg(name));
+    m_mounter.mount(url, verified);
+}
+
+void Backend::arrive(const QString &folder) {
+    // A bare server lands in the matching home folder when the other
+    // machine has one, which among one person's machines it usually does.
+    const QString remoteHome = folder + QDir::homePath();
+    const QFileInfo target(m_mountBare && QFileInfo(remoteHome).isDir() ? remoteHome : folder);
+    // An address can name a file, which opens its folder with it selected.
+    if (target.isDir() || !target.exists())
+        navigate(target.filePath());
+    else
+        showItem(target.filePath());
+}
+
+QString Backend::serverAddress(const QString &text) {
+    static const QStringList schemes{"sftp", "smb", "ftp", "dav", "davs"};
+    // Tolerant, so a path typed with spaces in it is escaped rather than
+    // refused; QUrl puts the scheme in lower case.
+    QUrl url(text.trimmed(), QUrl::TolerantMode);
+    if (!url.isValid() || !schemes.contains(url.scheme()) || url.host().isEmpty())
+        return {};
+    if (url.path().isEmpty())
+        url.setPath("/");
+    return url.toString(QUrl::FullyEncoded);
+}
+
+void Backend::perform(const QString &plugin, const QString &action, const QStringList &paths, const QString &target) {
+    if (!m_plugins)
+        return;
+    const int run = ++m_lastRun;
+    QPointer<Backend> self(this);
+    const QString busy = m_plugins->perform(plugin, action, paths, target, [self, run](const Plugins::Result &result) {
+        if (self)
+            self->finish(run, result);
+    });
+    // It never finishes before this returns, so its busy text is up first.
+    if (!busy.isEmpty()) {
+        m_runs.append({run, busy});
+        emit busyChanged();
+    }
+}
+
+void Backend::finish(int run, const Plugins::Result &result) {
+    if (m_runs.removeIf([run](const auto &r) { return r.first == run; }) > 0)
+        emit busyChanged();
+    if (!result.error.isEmpty())
+        setMessage(result.error);
+    if (!result.copy.isEmpty())
+        QGuiApplication::clipboard()->setText(result.copy);
+    if (!result.notice.isEmpty())
+        showNotice(result.notice);
+    if (!result.path.isEmpty())
+        navigate(Plugins::expand(result.path));
 }
 
 void Backend::openVolume(const QString &volume, const QString &name) {
     if (m_mounter.busy())
         return;
-    m_mountDrive = name.isEmpty() ? tr("the drive") : name;
+    m_mountName = name.isEmpty() ? tr("the drive") : name;
+    m_mountDrive = true;
     m_mountOpens = true;
-    setBusy(tr("Opening %1…").arg(m_mountDrive));
+    setBusy(tr("Opening %1…").arg(m_mountName));
     m_mounter.mountVolume(volume);
 }
 
 bool Backend::mountVolume(const QString &volume, const QString &name) {
     if (m_mounter.busy())
         return false;
-    m_mountDrive = name.isEmpty() ? tr("the drive") : name;
+    m_mountName = name.isEmpty() ? tr("the drive") : name;
+    m_mountDrive = true;
     m_mountOpens = false;
     m_mounter.mountVolume(volume);
     return true;
@@ -266,16 +395,20 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
-    const quint64 generation = ++m_describing;
-    // The system's own name for the type ("JPEG image"), already translated,
-    // needs nothing from the file. The same item again (its folder re-read)
-    // keeps what it shows until the new reading is in, rather than flickering.
-    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(mime).comment()}};
+    const quint64 generation = ++*m_describing;
+    // The same item again (its folder re-read) keeps what it shows until
+    // the new reading is in, rather than flickering.
+    QVariantMap details;
     if (const QString described = path + '\n' + mime; described != m_described) {
         m_described = described;
         m_details = details;
+        m_pluginRows.clear();
         emit detailsChanged();
     }
+    // Plugins say things about real files and folders, not trashed ones or
+    // a plugin's own items.
+    m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
+    showPluginRows(askPlugins());
     if (kind != "image" && kind != "text" && !inTrash)
         return;
 
@@ -284,14 +417,19 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
         watcher->deleteLater();
-        if (generation != m_describing)
+        if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
     });
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash] {
+    // Stepping through files faster than they're read queues readings; the
+    // ones overtaken before they start are skipped rather than left to tie
+    // up the threads the next folder is listed on.
+    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
         QVariantMap read;
+        if (*latest != generation)
+            return read;
         // A trashed item's note: finding it looks over every mounted drive,
         // and one that's hung would hold up the window.
         if (inTrash) {
@@ -302,8 +440,12 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             QImageReader reader(path);
             reader.setAutoTransform(true);
             const QSize size = reader.size();
-            if (size.isValid())
-                read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
+            // Numbers, not text: the pane writes them in the language's
+            // digits, and again when the language changes.
+            if (size.isValid()) {
+                read.insert("width", size.width());
+                read.insert("height", size.height());
+            }
         } else if (kind == "text") {
             // Enough of the top of the file to recognize it, never the whole
             // thing: a log can be gigabytes.
@@ -313,7 +455,47 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     }));
 }
 
+QVariantMap Backend::details() const {
+    QVariantMap details = m_details;
+    if (!m_pluginRows.isEmpty())
+        details.insert("plugins", m_pluginRows);
+    return details;
+}
+
+void Backend::showPluginRows(bool keep) {
+    const QVariantList rows = m_plugins && !m_pluginItem.isEmpty()
+                                  ? m_plugins->details(m_pluginItem.value("path").toString(),
+                                                       m_pluginItem.value("modified").toDateTime())
+                                  : QVariantList();
+    if (rows == m_pluginRows || (keep && rows.isEmpty()))
+        return;
+    m_pluginRows = rows;
+    emit detailsChanged();
+}
+
+bool Backend::askPlugins() {
+    if (!m_plugins || m_pluginItem.isEmpty())
+        return false;
+    // Answers for an item the selection has since moved on from are
+    // dropped, and its commands not yet started aren't run.
+    const quint64 generation = *m_describing;
+    QPointer<Backend> self(this);
+    return m_plugins->describe(
+        m_pluginItem.value("path").toString(), m_pluginItem.value("mime").toString(),
+        m_pluginItem.value("modified").toDateTime(), [latest = m_describing, generation] { return *latest == generation; },
+        [self, generation] {
+            if (self && *self->m_describing == generation)
+                self->showPluginRows(false);
+        });
+}
+
+QString Backend::typeName(const QString &mime) {
+    return QMimeDatabase().mimeTypeForName(mime).comment();
+}
+
 Backend::~Backend() {
+    if (s_working == this)
+        s_working = nullptr;
     // The preview follows this window; it closes with it.
     if (previewing()) {
         m_preview.terminate();
@@ -350,11 +532,17 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
 }
 
 bool Backend::goTyped(const QString &text) {
-    // A view is typed as the path bar shows it, by its own name.
-    if (const QString view = text.trimmed(); FolderModel::isView(view)) {
-        navigate(view);
+    // A server is mounted through GVfs, which also says where on the mount
+    // the address's path is (a WebDAV address's path can be part of the
+    // mount itself), and connecting goes there.
+    if (const QString address = serverAddress(text); !address.isEmpty()) {
+        if (!m_mounter.busy())
+            mount(address, QUrl(address).host(), false);
         return true;
     }
+    // A view is typed as the path bar shows it, by its own name.
+    if (const QString view = text.trimmed(); FolderModel::isView(view))
+        return go(view, true);
     const QString target = QDir::cleanPath(expandTyped(text, m_home, path()));
     const QFileInfo info(target);
     if (info.isDir()) {
@@ -423,19 +611,6 @@ void Backend::followSelection(const QString &path) {
         return;
     m_previewed = path;
     m_preview.write(path.toUtf8() + '\n');
-}
-
-void Backend::closePreviewUnder(const QString &root) {
-    if (!previewing() || !(m_previewed == root || m_previewed.startsWith(root + "/")))
-        return;
-    m_closingPreview = true;
-    m_preview.terminate();
-    // The unmount goes out right after this; a player still holding the
-    // file would make it fail as busy.
-    if (!m_preview.waitForFinished(1000)) {
-        m_preview.kill();
-        m_preview.waitForFinished(1000);
-    }
 }
 
 void Backend::showFolder(const QString &path) {

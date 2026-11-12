@@ -4,6 +4,7 @@
 #include <functional>
 #include <QDateTime>
 #include <QFileSystemWatcher>
+#include <QLocale>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
@@ -13,7 +14,7 @@
 #include <memory>
 
 // One folder's contents, listed off the UI thread so a slow mount (an SFTP
-// share over the tailnet, say) never freezes the window. Listing happens in
+// share on another machine, say) never freezes the window. Listing happens in
 // two passes: the entries first, then each subfolder's item count.
 class QFileInfo;
 class QMimeDatabase;
@@ -29,9 +30,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     // Set, the folder lists what matches it here and in every folder below.
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
-    // The online tailnet machines (as Places::parseTailscale gives them),
-    // which the tailnet view lists.
-    Q_PROPERTY(QVariantList peers READ peers WRITE setPeers NOTIFY peersChanged)
+    // The items a plugin's view lists, as Plugins::views gives them.
+    Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
 
 public:
     enum Role {
@@ -45,6 +45,7 @@ public:
         ExtensionRole,
         ItemCountRole,
         SelectedRole,
+        IconRole,
     };
 
     struct Entry {
@@ -55,8 +56,11 @@ public:
         QDateTime modified;
         QString kind;
         QString mime;
-        // A file's extension; a tailnet machine's operating system.
+        // A file's extension; a plugin item's subtitle.
         QString extension;
+        // A plugin item's glyph and its rows for the details pane.
+        QString icon;
+        QVariantList details;
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
@@ -79,8 +83,8 @@ public:
     void setSortMode(const QString &sort);
     QString query() const { return m_query; }
     void setQuery(const QString &query);
-    QVariantList peers() const { return m_peers; }
-    void setPeers(const QVariantList &peers);
+    QVariantList items() const { return m_items; }
+    void setItems(const QVariantList &items);
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -103,9 +107,12 @@ public:
     Q_INVOKABLE QStringList selectedPaths() const;
 
     // Synchronous building blocks, used by the background passes and tests.
-    // A listing stops, empty, as soon as `stop` returns true.
+    // A listing stops, empty, as soon as `stop` returns true. Names sort
+    // by `locale`'s alphabet; a background pass passes the one it was
+    // started with, because the default locale may only be read on the
+    // thread that sets it.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
-                               const std::function<bool()> &stop = {});
+                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale());
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
@@ -115,27 +122,26 @@ public:
     // no use for its pictures or their order.
     static int itemCount(const QString &folder, bool showHidden);
     static QStringList sortModes();
-    static void sortEntries(QVector<Entry> &entries, const QString &sort);
+    static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
     static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200,
                                      const std::function<bool()> &stop = {});
-    // The tailnet view: a path that isn't a folder, listing the machines on
-    // the tailnet. Each is an item of the "peer" kind at the view's path
-    // followed by its host, named by its host name.
-    static QString tailnetPath() { return QStringLiteral("tailnet:"); }
-    // The machines among `peers` whose names contain `query` (ignoring
-    // case), or all of them, by name.
-    static QVector<Entry> listPeers(const QVariantList &peers, const QString &query = {});
-    // Recents and the tailnet: lists of their own, not folders.
-    static bool isView(const QString &path) { return path == recentPath() || path == tailnetPath(); }
+    // A plugin's view: plugin:<id>, listing `items` in the plugin's order,
+    // each an item of the "item" kind at plugin:<id>/<item id>. The ones
+    // whose names contain `query` (ignoring case), or all of them.
+    static bool isPluginView(const QString &path) { return path.startsWith("plugin:") && !path.contains('/'); }
+    static QVector<Entry> listItems(const QVariantList &items, const QString &query = {});
+    // Recents and plugins' views: lists of their own, not folders.
+    static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
-                                 const std::function<bool()> &stop = {}, int limit = 1000);
+                                 const std::function<bool()> &stop = {}, int limit = 1000,
+                                 const QLocale &locale = QLocale());
 
 signals:
     void pathChanged();
@@ -145,7 +151,7 @@ signals:
     void showHiddenChanged();
     void sortModeChanged();
     void queryChanged();
-    void peersChanged();
+    void itemsChanged();
     void selectionChanged();
     void loaded();
 
@@ -168,7 +174,7 @@ private:
     bool m_showHidden = false;
     QString m_sort = "name";
     QString m_query;
-    QVariantList m_peers;
+    QVariantList m_items;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,

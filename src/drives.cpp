@@ -94,29 +94,6 @@ struct DrivesCallbacks {
             g_error_free(error);
         delete pending;
     }
-
-    static void unmounted(GObject *source, GAsyncResult *result, gpointer data, bool ejected) {
-        auto *pending = static_cast<Pending *>(data);
-        GError *error = nullptr;
-        bool ok;
-        if (G_IS_MOUNT(source))
-            ok = ejected ? g_mount_eject_with_operation_finish(G_MOUNT(source), result, &error)
-                         : g_mount_unmount_with_operation_finish(G_MOUNT(source), result, &error);
-        else
-            ok = g_volume_eject_with_operation_finish(G_VOLUME(source), result, &error);
-        if (Drives *self = pending->drives.data()) {
-            if (ok && ejected)
-                emit self->notice(QObject::tr("%1 can be unplugged").arg(pending->name));
-            else if (!ok && !cancelled(error))
-                // Busy is the usual one: a file open in another app.
-                emit self->failed(QObject::tr("Couldn't eject %1: %2").arg(pending->name, QString::fromUtf8(error->message)));
-        }
-        if (error)
-            g_error_free(error);
-        delete pending;
-    }
-    static void unmountedOnly(GObject *s, GAsyncResult *r, gpointer d) { unmounted(s, r, d, false); }
-    static void ejectedToo(GObject *s, GAsyncResult *r, gpointer d) { unmounted(s, r, d, true); }
 };
 
 Drives::Drives(QObject *parent) : QObject(parent), m_monitor(g_volume_monitor_get()) {
@@ -163,47 +140,17 @@ QList<Drives::Volume> Drives::volumes() const {
     GList *volumes = g_volume_monitor_get_volumes(m_monitor);
     for (GList *l = volumes; l; l = l->next) {
         GVolume *volume = G_VOLUME(l->data);
-        Volume v{take(g_volume_get_name(volume)), idOf(volume), {}, false};
+        Volume v{take(g_volume_get_name(volume)), idOf(volume), {}};
         if (GMount *mount = g_volume_get_mount(volume)) {
             v.root = rootOf(mount);
-            v.ejectable = g_mount_can_unmount(mount) || g_mount_can_eject(mount);
             g_object_unref(mount);
-        } else {
-            // A stick that's plugged in but not mounted can still be ejected.
-            v.ejectable = g_volume_can_eject(volume);
-            if (!g_volume_can_mount(volume))
-                continue;
+        } else if (!g_volume_can_mount(volume)) {
+            continue;
         }
         list << v;
     }
     g_list_free_full(volumes, g_object_unref);
     return list;
-}
-
-void Drives::eject(const QString &id) {
-    GVolume *volume = find(id);
-    if (!volume)
-        return;
-    const QString name = take(g_volume_get_name(volume));
-    // An operation with nothing answering it: udisks still asks polkit
-    // (it's only left out without one), while a "files are open, unmount
-    // anyway?" question goes unanswered, so nothing is cut off mid-write.
-    GMountOperation *operation = g_mount_operation_new();
-    if (GMount *mount = g_volume_get_mount(volume)) {
-        emit leaving(rootOf(mount));
-        if (g_mount_can_eject(mount))
-            g_mount_eject_with_operation(mount, G_MOUNT_UNMOUNT_NONE, operation, nullptr,
-                                         DrivesCallbacks::ejectedToo, new Pending{this, name});
-        else
-            g_mount_unmount_with_operation(mount, G_MOUNT_UNMOUNT_NONE, operation, nullptr,
-                                           DrivesCallbacks::unmountedOnly, new Pending{this, name});
-        g_object_unref(mount);
-    } else if (g_volume_can_eject(volume)) {
-        g_volume_eject_with_operation(volume, G_MOUNT_UNMOUNT_NONE, operation, nullptr,
-                                      DrivesCallbacks::ejectedToo, new Pending{this, name});
-    }
-    g_object_unref(operation);
-    g_object_unref(volume);
 }
 
 void Drives::mountQuietly(const QString &id) {

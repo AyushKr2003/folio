@@ -24,21 +24,29 @@ GridView {
             event.accepted = true
             return
         }
-        selecting.extendBy(event, event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
+        // Mirrored, the next item is to the left, as the plain arrows know.
+        const ahead = grid.effectiveLayoutDirection === Qt.RightToLeft ? -1 : 1
+        selecting.extendBy(event, event.key === Qt.Key_Left ? -ahead : event.key === Qt.Key_Right ? ahead
                                 : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0)
     }
 
     Band {
         view: grid
-        rectOf: (i) => Qt.rect((i % grid.columns) * grid.cellWidth + 20, Math.floor(i / grid.columns) * grid.cellHeight + 12,
-                               grid.cellWidth - 40, grid.cellHeight - 24)
+        // Mirrored, the first column is on the right, flush with the edge
+        // (the columns may not fill the width exactly).
+        rectOf: (i) => {
+            const c = i % grid.columns
+            const x = grid.effectiveLayoutDirection === Qt.RightToLeft ? grid.width - (c + 1) * grid.cellWidth : c * grid.cellWidth
+            return Qt.rect(x + 20, Math.floor(i / grid.columns) * grid.cellHeight + 12,
+                           grid.cellWidth - 40, grid.cellHeight - 24)
+        }
     }
 
     // Right-click on an item (selecting it) or on empty space.
-    signal contextMenu(var item, string folder)
+    signal contextMenu(var item, string folder, point at)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path)
+        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
     }
 
     clip: true
@@ -95,7 +103,7 @@ GridView {
         anchors.centerIn: parent
         visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
         text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
-            : backend.path === "tailnet:" ? qsTr("No machines are online") : qsTr("This folder is empty")
+            : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
         color: theme.secondaryForeground
     }
 }

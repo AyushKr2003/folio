@@ -22,11 +22,26 @@ Rectangle {
     readonly property bool noting: hasItem && folderPane.inTrash && info.origin === undefined
     readonly property string origin: info.origin || ""
     readonly property bool trashed: hasItem && origin.length > 0
-    // A tailnet machine shows its system and host, and has no date.
-    readonly property bool machine: hasItem && item.kind === "peer"
+    // A plugin's item shows its subtitle and its own details, and has no
+    // date.
+    readonly property bool pluginItem: hasItem && item.kind === "item"
+    // The drive whose top folder is selected or shown, for its free space.
+    readonly property var drive: {
+        const shown = folderPane ? folderPane.paneBackend.path : ""
+        for (const d of places.devices)
+            if (d.free >= 0 && ((hasItem && d.path === item.path) || d.path === shown))
+                return d
+        return null
+    }
+    // Tab reaches the details after the panes while there's an app to pick
+    // for the file, and Escape hands the keyboard back to the files.
+    readonly property bool takesKeyboard: opensWith.visible
+    readonly property bool hasKeyboard: opensWith.activeFocus
+    function focusKeyboard() { opensWith.forceActiveFocus(Qt.TabFocusReason) }
+    signal finished()
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
-    // Its type's name, and a picture's size or a text's opening lines once
-    // they've been read off the UI thread.
+    // A picture's size or a text's opening lines once they've been read off
+    // the UI thread.
     readonly property var info: backend.details
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
@@ -53,7 +68,7 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.machine ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
@@ -80,7 +95,7 @@ Rectangle {
             Glyph {
                 anchors.centerIn: parent
                 visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
-                name: pane.machine ? "peer" : pane.hasItem && pane.item.isDir ? "folder" : "file"
+                name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
                 color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
@@ -90,8 +105,11 @@ Rectangle {
         ColumnLayout {
             spacing: 4
             Layout.fillWidth: true
+            // Aligned explicitly, so that they're mirrored: left as they
+            // are, a Latin name would stay on the left.
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
@@ -102,7 +120,11 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: Format.summary(pane.item, pane.info.type)
+                horizontalAlignment: Text.AlignLeft
+                text: {
+                    translator.language // The type's name comes from the system, in the language of the moment.
+                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -115,7 +137,7 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { visible: pane.trashed; text: qsTr("From"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: pane.trashed
                 Layout.fillWidth: true
@@ -125,19 +147,9 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
-            Text { visible: pane.machine; text: qsTr("Host"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
-                visible: pane.machine
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: pane.machine ? pane.item.path.slice("tailnet:".length) : ""
-                color: theme.foreground
-                font.pixelSize: 12
-                elide: Text.ElideMiddle
-            }
-            Text { visible: !pane.machine; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
-                visible: !pane.machine
+                visible: !pane.pluginItem
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: {
@@ -148,14 +160,81 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
-            Text { visible: !!pane.info.dimensions; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
-                visible: !!pane.info.dimensions
+                visible: !!pane.drive
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: pane.info.dimensions || ""
+                text: {
+                    translator.language // Re-read when the language (and so its digits) changes.
+                    return pane.drive ? Format.size(pane.drive.free) : ""
+                }
                 color: theme.foreground
                 font.pixelSize: 12
+            }
+            // What the file opens with, picked from the apps that can open
+            // its type, which makes that app the type's default.
+            Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            PlainButton {
+                id: opensWith
+                // Read again after picking one, which changes the default.
+                property int picked: 0
+                readonly property var apps: {
+                    picked
+                    return pane.hasItem && !pane.item.isDir && !pane.trashed && !pane.pluginItem && pane.folderPane
+                        ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
+                }
+                readonly property var current: apps.find(app => app.isDefault)
+                visible: apps.length > 1
+                Layout.alignment: Qt.AlignRight
+                implicitHeight: 28
+                text: (current ? current.name : qsTr("Choose")) + "  ▾"
+                onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                Keys.onEscapePressed: pane.finished()
+                // Gone with the keyboard on it (another item selected, or the
+                // details hidden), it hands the keyboard back.
+                onVisibleChanged: if (!visible && activeFocus) pane.finished()
+                FolioMenu {
+                    id: appsMenu
+                    Repeater {
+                        model: opensWith.apps
+                        FolioMenuItem {
+                            required property var modelData
+                            text: modelData.name
+                            keys: modelData.isDefault ? "✓" : ""
+                            onTriggered: {
+                                pane.folderPane.paneFileOps.setDefaultApp(pane.item.path, modelData.id)
+                                opensWith.picked++
+                            }
+                        }
+                    }
+                }
+            }
+            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.width
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
+                                                     .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
+                color: theme.foreground
+                font.pixelSize: 12
+            }
+            // Plugins' rows, label and value in turn, after Folio's own: a
+            // plugin's item's details, or what plugins say about a file.
+            Repeater {
+                model: (pane.pluginItem ? pane.item.details : pane.info.plugins || []).reduce((all, row) => all.concat([row[0], row[1]]), [])
+                Text {
+                    required property string modelData
+                    required property int index
+                    readonly property bool label: index % 2 === 0
+                    Layout.fillWidth: !label
+                    horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
+                    text: modelData
+                    color: label ? theme.secondaryForeground : theme.foreground
+                    font.pixelSize: 12
+                    elide: label ? Text.ElideNone : Text.ElideMiddle
+                }
             }
         }
 
@@ -168,7 +247,15 @@ Rectangle {
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
             enabled: !pane.noting
-            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
+            // Names the app the file opens in: "Open with Plain", read again
+            // when Opens with picks another.
+            readonly property string app: {
+                opensWith.picked
+                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.item.mime || "") : ""
+            }
+            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
+                //: %1 is the name of the app the file opens in, like "Plain".
+                : app ? qsTr("Open with %1").arg(app) : qsTr("Open")
             Accessible.name: text
             onClicked: pane.trashed ? pane.folderPane.paneFileOps.restore([pane.item.path]) : pane.folderPane.paneBackend.open(pane.item.path)
             background: Rectangle {
@@ -176,7 +263,8 @@ Rectangle {
                 color: openButton.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent
             }
             contentItem: RowLayout {
-                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; color: theme.accentForeground; font.weight: Font.DemiBold }
+                // A long app name ends in … rather than running past the button.
+                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
                 Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }

@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Tidak dapat mengirim ke %1: %2",
+  "Host": "Host",
+  "Machines": "Mesin",
+  "No machines are online": "Tidak ada mesin yang online",
+  "Sending to %1…": "Mengirim ke %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

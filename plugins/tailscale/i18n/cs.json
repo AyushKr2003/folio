@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Odeslání na %1 se nepodařilo: %2",
+  "Host": "Hostitel",
+  "Machines": "Zařízení",
+  "No machines are online": "Žádná zařízení nejsou online",
+  "Sending to %1…": "Odesílá se na %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

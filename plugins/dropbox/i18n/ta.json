@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1 க்கான Dropbox இணைப்பைப் பெற முடியவில்லை: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox இணைப்பு",
+  "Dropbox link for %1 copied.": "%1 க்கான Dropbox இணைப்பு நகலெடுக்கப்பட்டது.",
+  "Getting a Dropbox link for %1…": "%1 க்கான Dropbox இணைப்பைப் பெறுகிறது…",
+  "stopped": "நின்றுவிட்டது",
+  "syncing": "ஒத்திசைக்கிறது"
+}

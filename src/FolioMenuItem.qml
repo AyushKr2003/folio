@@ -9,6 +9,12 @@ MenuItem {
     id: entry
 
     property string keys
+    // Said while it's highlighted, by the pointer or the arrow keys, for an
+    // entry that needs a word more than its label.
+    property string tip
+    ToolTip.visible: tip.length > 0 && highlighted
+    ToolTip.delay: 600
+    ToolTip.text: tip
     // Hidden entries take no room, and the arrow keys pass over them: Menu
     // skips only entries that are disabled or out of the tab chain, so
     // Return would otherwise run one nobody can see.
@@ -37,6 +43,7 @@ MenuItem {
         implicitHeight: label.implicitHeight
         Text {
             id: label
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: entry.text
             color: !entry.enabled ? theme.secondaryForeground : entry.highlighted ? theme.brightForeground : theme.foreground
@@ -52,16 +59,18 @@ MenuItem {
         }
     }
 
+    // Placed by hand, so mirrored by hand: the arrow and the check go to the
+    // left, and the arrow points where the submenu opens.
     arrow: Glyph {
-        x: entry.width - width - 14
+        x: entry.mirrored ? 14 : entry.width - width - 14
         anchors.verticalCenter: parent.verticalCenter
         visible: !!entry.subMenu
-        name: "forward"
+        name: entry.mirrored ? "back" : "forward"
         size: 12
         color: entry.enabled ? theme.foreground : theme.secondaryForeground
     }
     indicator: Glyph {
-        x: entry.width - width - 14
+        x: entry.mirrored ? 14 : entry.width - width - 14
         anchors.verticalCenter: parent.verticalCenter
         visible: entry.checked
         name: "check"

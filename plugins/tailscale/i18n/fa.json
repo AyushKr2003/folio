@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "ارسال به %1 ممکن نشد: %2",
+  "Host": "میزبان",
+  "Machines": "دستگاه‌ها",
+  "No machines are online": "هیچ دستگاهی آنلاین نیست",
+  "Sending to %1…": "در حال ارسال به %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

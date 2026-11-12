@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "دریافت پیوند Dropbox برای %1 ممکن نشد: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "پیوند Dropbox",
+  "Dropbox link for %1 copied.": "پیوند Dropbox برای %1 کپی شد.",
+  "Getting a Dropbox link for %1…": "در حال دریافت پیوند Dropbox برای %1…",
+  "stopped": "متوقف‌شده",
+  "syncing": "در حال همگام‌سازی"
+}

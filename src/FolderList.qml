@@ -24,19 +24,21 @@ ListView {
         rectOf: (i) => Qt.rect(0, i * 32, list.width, 32)
     }
 
-    // → goes into the selected folder and ← back up, as in the columns.
-    Keys.onRightPressed: {
+    // → goes into the selected folder and ← back up, as in the columns;
+    // mirrored, the other way round, with the reading direction.
+    function enter() {
         const item = backend.folder.get(currentIndex)
         if (item.isDir)
             backend.navigate(item.path)
     }
-    Keys.onLeftPressed: backend.goUp()
+    Keys.onRightPressed: LayoutMirroring.enabled ? backend.goUp() : enter()
+    Keys.onLeftPressed: LayoutMirroring.enabled ? enter() : backend.goUp()
 
     // Right-click on an item (selecting it) or on empty space.
-    signal contextMenu(var item, string folder)
+    signal contextMenu(var item, string folder, point at)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => list.contextMenu(selecting.menuAt(point), backend.path)
+        onTapped: (point) => list.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
     }
 
     clip: true
@@ -63,7 +65,7 @@ ListView {
         anchors.centerIn: parent
         visible: list.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
         text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
-            : backend.path === "tailnet:" ? qsTr("No machines are online") : qsTr("This folder is empty")
+            : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
         color: theme.secondaryForeground
     }
 }

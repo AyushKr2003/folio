@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "%1 க்கு அனுப்ப முடியவில்லை: %2",
+  "Host": "புரவலர்",
+  "Machines": "இயந்திரங்கள்",
+  "No machines are online": "எந்த இயந்திரமும் இணைப்பில் இல்லை",
+  "Sending to %1…": "%1 க்கு அனுப்புகிறது…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

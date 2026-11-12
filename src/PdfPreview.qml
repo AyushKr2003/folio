@@ -45,7 +45,8 @@ Item {
         Text {
             id: pageLabel
             anchors.centerIn: parent
-            text: qsTr("Page %1 of %2").arg(view.currentPage + 1).arg(doc.pageCount)
+            text: qsTr("Page %1 of %2").arg((view.currentPage + 1).toLocaleString(Qt.locale(), "f", 0))
+                                       .arg(doc.pageCount.toLocaleString(Qt.locale(), "f", 0))
             color: theme.secondaryForeground
             font.pixelSize: 12
         }

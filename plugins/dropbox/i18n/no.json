@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Kunne ikke hente Dropbox-lenke for %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox-lenke",
+  "Dropbox link for %1 copied.": "Dropbox-lenke for %1 er kopiert.",
+  "Getting a Dropbox link for %1…": "Henter Dropbox-lenke for %1…",
+  "stopped": "stoppet",
+  "syncing": "synkroniserer"
+}

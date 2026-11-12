@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Nem sikerült elküldeni ide: %1: %2",
+  "Host": "Gazdagép",
+  "Machines": "Gépek",
+  "No machines are online": "Nincs online gép",
+  "Sending to %1…": "Küldés ide: %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

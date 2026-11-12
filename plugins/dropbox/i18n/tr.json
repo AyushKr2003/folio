@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1 için Dropbox bağlantısı alınamadı: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox Bağlantısı",
+  "Dropbox link for %1 copied.": "%1 için Dropbox bağlantısı kopyalandı.",
+  "Getting a Dropbox link for %1…": "%1 için Dropbox bağlantısı alınıyor…",
+  "stopped": "durduruldu",
+  "syncing": "eşitleniyor"
+}

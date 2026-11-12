@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Nu s-a putut trimite la %1: %2",
+  "Host": "Gazdă",
+  "Machines": "Dispozitive",
+  "No machines are online": "Niciun dispozitiv nu este online",
+  "Sending to %1…": "Se trimite la %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

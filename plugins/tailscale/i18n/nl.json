@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Kon niet naar %1 verzenden: %2",
+  "Host": "Host",
+  "Machines": "Machines",
+  "No machines are online": "Er zijn geen machines online",
+  "Sending to %1…": "Verzenden naar %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

@@ -6,6 +6,7 @@
 
 class Backend;
 class FileOps;
+class Plugins;
 class QQmlContext;
 class QQmlEngine;
 
@@ -18,7 +19,7 @@ class Windows : public QObject {
     Q_OBJECT
 
 public:
-    explicit Windows(QQmlEngine *engine, QObject *parent = nullptr);
+    explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr);
 
     // Opens a window on a folder, or on a file's folder with it selected.
     // Null if the interface failed to load (the errors are on stderr).
@@ -26,11 +27,6 @@ public:
 
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
-
-    // A drive at `root` is going away: every pane in it goes home and every
-    // preview of a file on it closes, so none holds it busy or shows a
-    // folder that's gone.
-    void leave(const QString &root);
 
     // Splits a window: a second folder pane, with its own folder, history
     // and selection, starting at `folder`. Returns the pane, for Main.qml to
@@ -57,6 +53,7 @@ private:
     void close(QObject *window);
 
     QQmlEngine *m_engine;
+    Plugins *m_plugins;
     QQmlComponent m_component;
     QQmlComponent m_pane;
     // Most recently used first.

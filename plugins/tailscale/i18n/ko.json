@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "%1(으)로 보낼 수 없습니다: %2",
+  "Host": "호스트",
+  "Machines": "기기",
+  "No machines are online": "온라인인 기기가 없습니다",
+  "Sending to %1…": "%1(으)로 보내는 중…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "No s'ha pogut obtenir un enllaç de Dropbox per a %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Enllaç de Dropbox",
+  "Dropbox link for %1 copied.": "S'ha copiat l'enllaç de Dropbox de %1.",
+  "Getting a Dropbox link for %1…": "S'està obtenint un enllaç de Dropbox per a %1…",
+  "stopped": "aturat",
+  "syncing": "sincronitzant"
+}

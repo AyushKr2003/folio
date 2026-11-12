@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "無法取得 %1 的 Dropbox 連結：%2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox 連結",
+  "Dropbox link for %1 copied.": "已複製 %1 的 Dropbox 連結。",
+  "Getting a Dropbox link for %1…": "正在取得 %1 的 Dropbox 連結…",
+  "stopped": "已停止",
+  "syncing": "同步中"
+}

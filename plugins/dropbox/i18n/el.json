@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Δεν ήταν δυνατή η λήψη συνδέσμου Dropbox για το %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Σύνδεσμος Dropbox",
+  "Dropbox link for %1 copied.": "Ο σύνδεσμος Dropbox για το %1 αντιγράφηκε.",
+  "Getting a Dropbox link for %1…": "Λήψη συνδέσμου Dropbox για το %1…",
+  "stopped": "σταμάτησε",
+  "syncing": "συγχρονίζεται"
+}

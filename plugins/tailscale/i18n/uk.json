@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Не вдалося надіслати до %1: %2",
+  "Host": "Вузол",
+  "Machines": "Пристрої",
+  "No machines are online": "Немає пристроїв онлайн",
+  "Sending to %1…": "Надсилання до %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

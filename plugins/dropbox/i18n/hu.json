@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Nem sikerült Dropbox-linket lekérni ehhez: %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox-link",
+  "Dropbox link for %1 copied.": "%1 Dropbox-linkje másolva.",
+  "Getting a Dropbox link for %1…": "Dropbox-link lekérése ehhez: %1…",
+  "stopped": "leállítva",
+  "syncing": "szinkronizálás"
+}

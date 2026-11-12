@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "%1 の Dropbox リンクを取得できませんでした: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox リンク",
+  "Dropbox link for %1 copied.": "%1 の Dropbox リンクをコピーしました。",
+  "Getting a Dropbox link for %1…": "%1 の Dropbox リンクを取得中…",
+  "stopped": "停止中",
+  "syncing": "同期中"
+}

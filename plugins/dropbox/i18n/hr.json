@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Nije bilo moguće dobiti Dropbox poveznicu za %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox poveznica",
+  "Dropbox link for %1 copied.": "Dropbox poveznica za %1 je kopirana.",
+  "Getting a Dropbox link for %1…": "Dobivanje Dropbox poveznice za %1…",
+  "stopped": "zaustavljeno",
+  "syncing": "sinkronizira se"
+}

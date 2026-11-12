@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "V %1 ni bilo mogoče poslati: %2",
+  "Host": "Gostitelj",
+  "Machines": "Naprave",
+  "No machines are online": "Nobena naprava ni povezana",
+  "Sending to %1…": "Pošiljanje v %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

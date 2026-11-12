@@ -1,0 +1,44 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    # Folio is an Arch package built against Arch's Qt, so it's tested there.
+    container: archlinux:latest
+    steps:
+      - name: Install the build and test dependencies
+        # Arch is rolling, so update first; poppler is for the PDF thumbnail
+        # test, which skips without it, and jq for the Tailscale plugin's.
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake git \
+            glib2 libarchive zlib xdg-utils hicolor-icon-theme \
+            qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland \
+            poppler jq
+
+      - name: Set up a user and a locale like a desktop's
+        # The container runs as root, which can read any folder, so the tests
+        # about unreadable ones need an ordinary user; and names sort by the
+        # locale, which the container doesn't generate.
+        run: |
+          useradd -m tester
+          sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+          locale-gen
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          chown -R tester .
+          su tester -c 'bin/build'
+
+      - name: Test
+        # Some tests talk to a session bus (the desktop's file manager
+        # interface), which a container doesn't have.
+        run: su tester -c 'LANG=en_US.UTF-8 dbus-run-session -- bin/test'

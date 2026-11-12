@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Не можа да се изпрати до %1: %2",
+  "Host": "Хост",
+  "Machines": "Машини",
+  "No machines are online": "Няма машини онлайн",
+  "Sending to %1…": "Изпращане до %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

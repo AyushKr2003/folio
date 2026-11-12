@@ -1,0 +1,10 @@
+#!/bin/sh
+# Says how a file or folder in Dropbox stands, in Dropbox's own words, from
+# `dropbox-cli filestatus`, which prints "<path>: up to date". Anything else
+# it may say (Dropbox not running, a file it doesn't watch) gives no row.
+said=$(dropbox-cli filestatus "$1" 2>/dev/null)
+status=${said#"$1: "}
+case "$status" in
+  "up to date" | syncing | unsyncable) printf '[["Dropbox", "%s"]]\n' "$status" ;;
+  *) echo '[]' ;;
+esac

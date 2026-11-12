@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Не вдалося отримати посилання Dropbox для %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Посилання Dropbox",
+  "Dropbox link for %1 copied.": "Посилання Dropbox для %1 скопійовано.",
+  "Getting a Dropbox link for %1…": "Отримання посилання Dropbox для %1…",
+  "stopped": "зупинено",
+  "syncing": "синхронізується"
+}

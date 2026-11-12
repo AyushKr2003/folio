@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Ekki tókst að fá Dropbox-tengil fyrir %1: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox-tengill",
+  "Dropbox link for %1 copied.": "Dropbox-tengill fyrir %1 afritaður.",
+  "Getting a Dropbox link for %1…": "Sæki Dropbox-tengil fyrir %1…",
+  "stopped": "stöðvað",
+  "syncing": "samstillir"
+}

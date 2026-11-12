@@ -15,12 +15,15 @@ Item {
     function toggle() { media.playing ? player.pause() : player.play() }
     function seek(seconds) { player.position = Math.max(0, Math.min(player.duration, player.position + seconds * 1000)) }
 
+    // In the language's digits, so its labels read the language too.
     function clock(ms) {
         const total = Math.floor(ms / 1000)
         const h = Math.floor(total / 3600)
         const m = Math.floor(total / 60) % 60
-        const s = (total % 60).toString().padStart(2, "0")
-        return h > 0 ? h + ":" + m.toString().padStart(2, "0") + ":" + s : m + ":" + s
+        const s = total % 60
+        const num = v => v.toLocaleString(Qt.locale(), "f", 0)
+        const two = v => (v < 10 ? num(0) : "") + num(v)
+        return h > 0 ? num(h) + ":" + two(m) + ":" + two(s) : num(m) + ":" + two(s)
     }
 
     MediaPlayer {
@@ -105,17 +108,25 @@ Item {
             implicitHeight: 52
             color: theme.background
 
+            // Time runs left to right in every language, as the seek keys
+            // (Shift+← back, Shift+→ ahead) do.
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 24
                 spacing: 12
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 IconButton {
                     glyph: media.playing ? "pause" : "play"
                     text: media.playing ? qsTr("Pause (K)") : qsTr("Play (K)")
                     onClicked: media.toggle()
                 }
-                Text { text: media.clock(player.position); color: theme.foreground; font.pixelSize: 12 }
+                Text {
+                    text: { translator.language; return media.clock(player.position) }
+                    color: theme.foreground
+                    font.pixelSize: 12
+                }
                 Slider {
                     Layout.fillWidth: true
                     from: 0
@@ -125,7 +136,11 @@ Item {
                     focusPolicy: Qt.NoFocus
                     onMoved: player.position = value
                 }
-                Text { text: media.clock(player.duration); color: theme.secondaryForeground; font.pixelSize: 12 }
+                Text {
+                    text: { translator.language; return media.clock(player.duration) }
+                    color: theme.secondaryForeground
+                    font.pixelSize: 12
+                }
             }
         }
     }

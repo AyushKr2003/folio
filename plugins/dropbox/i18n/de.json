@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Dropbox-Link für %1 konnte nicht abgerufen werden: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Dropbox-Link",
+  "Dropbox link for %1 copied.": "Dropbox-Link für %1 kopiert.",
+  "Getting a Dropbox link for %1…": "Dropbox-Link für %1 wird abgerufen…",
+  "stopped": "angehalten",
+  "syncing": "wird synchronisiert"
+}

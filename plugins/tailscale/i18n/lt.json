@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Nepavyko nusiųsti į %1: %2",
+  "Host": "Kompiuteris",
+  "Machines": "Kompiuteriai",
+  "No machines are online": "Nėra prisijungusių kompiuterių",
+  "Sending to %1…": "Siunčiama į %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

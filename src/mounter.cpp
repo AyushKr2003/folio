@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QPointer>
 #include <QTimer>
+#include <QUrl>
+#include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
 // keyword.
@@ -56,18 +58,23 @@ struct MounterCallbacks {
 
     // GVfs's SFTP backend asks two questions, about a host seen for the
     // first time and about a host whose key differs from the key for its IP
-    // address, and both list "Log In Anyway" first. A tailnet machine is
-    // reached over WireGuard and already authenticated by Tailscale, so the
-    // answer is always yes. A changed key for a known machine never gets
-    // here: ssh refuses it outright.
-    static void question(GMountOperation *op, const char *, const char **, gpointer data) {
-        // A drive's questions are left to GIO, which declines them, rather
-        // than answered yes for the user.
-        if (static_cast<Mounter *>(data)->m_drive)
-            return;
+    // address, and both list "Log In Anyway" first. A verified machine (one
+    // on a tailnet, reached over WireGuard and already authenticated by
+    // Tailscale) gets yes. A changed key for a known machine never gets
+    // here: ssh refuses it outright. Any other server's questions (a WebDAV
+    // server's certificate that can't be verified, too) are the user's.
+    static void question(GMountOperation *op, const char *message, const char **choices, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-question");
-        g_mount_operation_set_choice(op, 0);
-        g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
+        auto *self = static_cast<Mounter *>(data);
+        if (self->m_verified) {
+            g_mount_operation_set_choice(op, 0);
+            g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
+            return;
+        }
+        self->m_prompt = QString::fromUtf8(message).trimmed();
+        for (const char **choice = choices; choice && *choice; ++choice)
+            self->m_choices << QString::fromUtf8(*choice);
+        self->setAsking(true);
     }
 
     static void password(GMountOperation *op, const char *message, const char *user, const char *,
@@ -94,9 +101,13 @@ struct MounterCallbacks {
         const bool ok = g_file_mount_enclosing_volume_finish(G_FILE(source), result, &error);
         if (self) {
             char *path = g_file_get_path(G_FILE(source));
-            self->report(ok, error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_ALREADY_MOUNTED),
-                         QString::fromUtf8(path ? path : ""), error);
+            const QString local = QString::fromUtf8(path ? path : "");
             g_free(path);
+            // Where GVfs put it, for the address it was asked for: only
+            // SFTP's folder can be worked out ahead of time.
+            if ((ok || alreadyMounted(error)) && local.startsWith(Mounter::root() + "/"))
+                Mounter::known()[self->m_url] = local;
+            self->report(ok, alreadyMounted(error), local, error);
         }
         if (error)
             g_error_free(error);
@@ -118,10 +129,15 @@ struct MounterCallbacks {
                 g_object_unref(root);
                 g_object_unref(mount);
             }
-            self->report(ok, error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_ALREADY_MOUNTED), local, error);
+            self->report(ok, alreadyMounted(error), local, error);
         }
         if (error)
             g_error_free(error);
+    }
+
+    // Mounted earlier (by Folio or another app) is as good as now.
+    static bool alreadyMounted(const GError *error) {
+        return error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_ALREADY_MOUNTED);
     }
 };
 
@@ -135,10 +151,9 @@ void Mounter::report(bool ok, bool already, const QString &local, const GError *
     const bool empty = stopped && unlockedEmpty(m_volume);
     const bool timedOut = stopped && m_lost;
     finish();
-    // Mounted earlier (by Folio or another app) is as good as now.
     if (ok || already) {
         if (local.isEmpty())
-            emit failed(tr("GVfs mounted it but gave no local folder for it"));
+            emit failed(tr("GVfs gave no local folder for the mount"));
         else
             emit mounted(local);
         return;
@@ -171,19 +186,61 @@ Mounter::~Mounter() {
     finish();
 }
 
-void Mounter::begin(bool drive) {
+QString Mounter::root() {
+    return QStringLiteral("/run/user/%1/gvfs").arg(getuid());
+}
+
+QHash<QString, QString> &Mounter::known() {
+    static QHash<QString, QString> roots;
+    return roots;
+}
+
+QString Mounter::folderFor(const QString &url) {
+    const QUrl parsed(url);
+    if (parsed.scheme() != "sftp" || parsed.host().isEmpty())
+        return known().value(url).section('/', 0, 5);
+    // GVfs keeps a mount's parts sorted by key: host, port, user.
+    return root() + "/sftp:host=" + parsed.host() + (parsed.port() < 0 ? QString() : ",port=" + QString::number(parsed.port()))
+           + (parsed.userName().isEmpty() ? QString() : ",user=" + parsed.userName());
+}
+
+QString Mounter::destinationFor(const QString &url) {
+    if (known().contains(url))
+        return known().value(url);
+    const QString mount = folderFor(url);
+    // The address's path is read from the server's top, where ".." goes no
+    // higher, as GVfs reads it. Joined first and cleaned after, it would
+    // climb out of the mount to a local folder ("sftp://nas/../../tmp");
+    // QDir::cleanPath keeps a leading "..", so the steps are taken here.
+    if (mount.isEmpty())
+        return {};
+    QStringList parts;
+    for (const QString &part : QUrl(url).path().split('/', Qt::SkipEmptyParts)) {
+        if (part == "..") {
+            if (!parts.isEmpty())
+                parts.removeLast();
+        } else if (part != ".") {
+            parts << part;
+        }
+    }
+    return parts.isEmpty() ? mount : mount + '/' + parts.join('/');
+}
+
+void Mounter::begin(bool drive, bool verified) {
     m_drive = drive;
+    m_verified = verified;
     m_operation = g_mount_operation_new();
     g_signal_connect(m_operation, "ask-question", G_CALLBACK(MounterCallbacks::question), this);
     g_signal_connect(m_operation, "ask-password", G_CALLBACK(MounterCallbacks::password), this);
     g_signal_connect(m_operation, "aborted", G_CALLBACK(MounterCallbacks::aborted), this);
 }
 
-void Mounter::mount(const QString &uri) {
+void Mounter::mount(const QString &uri, bool verified) {
     if (m_operation)
         return;
+    begin(false, verified);
+    m_url = uri;
     GFile *file = g_file_new_for_uri(uri.toUtf8().constData());
-    begin(false);
     // Qt runs on GLib's main loop on Linux, so the reply arrives on the UI
     // thread like any other event. The window can close before GVfs answers,
     // and GIO calls back regardless, so the callback gets a guard, not `this`.
@@ -201,7 +258,9 @@ void Mounter::mountVolume(const QString &id) {
         emit failed(tr("It's no longer connected"));
         return;
     }
-    begin(true);
+    // A drive's questions (another app has files open on it) are the
+    // user's, as an unverified server's are.
+    begin(true, false);
     m_volume = id;
     m_lost = false;
     m_cancellable = g_cancellable_new();
@@ -237,6 +296,14 @@ void Mounter::providePassword(const QString &user, const QString &password) {
     }
 }
 
+void Mounter::choose(int choice) {
+    if (!m_operation || !m_asking || choice < 0 || choice >= m_choices.size())
+        return;
+    setAsking(false);
+    g_mount_operation_set_choice(m_operation, choice);
+    g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
+}
+
 void Mounter::cancel() {
     if (!m_operation || !m_asking)
         return;
@@ -246,8 +313,10 @@ void Mounter::cancel() {
 
 void Mounter::setAsking(bool asking) {
     m_asking = asking;
-    if (!asking)
+    if (!asking) {
         m_prompt.clear();
+        m_choices.clear();
+    }
     emit askingChanged();
 }
 

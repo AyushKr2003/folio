@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "无法发送到 %1：%2",
+  "Host": "主机",
+  "Machines": "设备",
+  "No machines are online": "没有设备在线",
+  "Sending to %1…": "正在发送到 %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

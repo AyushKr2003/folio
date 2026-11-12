@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "לא ניתן היה לשלוח ל־%1: %2",
+  "Host": "מארח",
+  "Machines": "מכשירים",
+  "No machines are online": "אין מכשירים מחוברים",
+  "Sending to %1…": "שולח ל־%1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

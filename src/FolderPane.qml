@@ -50,8 +50,13 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
-    readonly property bool keys: active && !typing
+    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    // Keys for the pane as a whole (undo, a new window, typing a path) work
+    // wherever the keyboard is; keys for its files only while the files
+    // have it, not while Tab has put it in the sidebar or the details, where
+    // Delete or Space would act on files out of the keyboard's sight.
+    readonly property bool paneKeys: active && !typing
+    readonly property bool keys: paneKeys && activeFocus
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
@@ -65,20 +70,20 @@ FocusScope {
     }
     // An open preview stays on the selected item, followed once the
     // folder's loaded has put the cursor back on it: a re-read leaves
-    // another item on the cursor's row for a moment. A tailnet machine
-    // isn't a file: the preview keeps what it showed last.
+    // another item on the cursor's row for a moment. A plugin's item isn't
+    // a file: the preview keeps what it showed last.
     onCurrentChanged: Qt.callLater(follow)
-    function follow() { if (backend.previewing && current.path && current.kind !== "peer") backend.followSelection(current.path) }
+    function follow() { if (backend.previewing && current.path && current.kind !== "item") backend.followSelection(current.path) }
 
     // In the trash, Delete means for good (after asking), and there's
     // Restore and Empty Trash. Nothing is renamed or made there: an item
     // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
-    // The tailnet view lists machines, not files: there's nothing to copy,
-    // move, rename, make, pin or preview there, only machines to open.
-    readonly property bool inTailnet: backend.path === "tailnet:"
-    readonly property bool fileKeys: keys && !inTailnet
-    Binding { target: backend.folder; property: "peers"; value: places.peers }
+    // Plugins' views list items, not files: there's nothing to copy, move,
+    // rename, make, pin or preview there, only items to open.
+    readonly property bool inView: backend.path.startsWith("plugin:")
+    readonly property bool fileKeys: keys && !inView
+    Binding { target: backend.folder; property: "items"; value: (plugins.views[backend.path] || {}).items || [] }
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -92,7 +97,7 @@ FocusScope {
         const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
         confirm.ask(qsTr("Delete for good?"),
                     paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
-                                       : qsTr("%n items will be deleted permanently. This can't be undone.", "", paths.length),
+                                       : qsTr("%Ln items will be deleted permanently. This can't be undone.", "", paths.length),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
     function emptyTrash() {
@@ -100,8 +105,17 @@ FocusScope {
         if (count === 0)
             return
         confirm.ask(qsTr("Empty the trash?"),
-                    qsTr("%n items will be deleted permanently. This can't be undone.", "", count),
+                    qsTr("%Ln items will be deleted permanently. This can't be undone.", "", count),
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
+    }
+
+    // Format… from a drive's menu in the sidebar, and Burn from an image's.
+    function formatDrive(disk) { formatDialog.open(disk) }
+    function confirmBurn(path, drive) {
+        const name = path.slice(path.lastIndexOf("/") + 1)
+        confirm.ask(qsTr("Burn %1?").arg(name),
+                    qsTr("Burning %1 erases everything on %2. This can't be undone.").arg(name, drive.title),
+                    qsTr("Burn"), () => fileOps.burn(path, drive.id), true)
     }
 
     // Whichever pane has the keyboard is the one keys, the sidebar and the
@@ -122,26 +136,37 @@ FocusScope {
 
     Shortcut { sequence: "Space"; enabled: pane.fileKeys; onActivated: backend.togglePreview(pane.current.path || "") }
     Shortcut { sequences: [StandardKey.Copy]; enabled: pane.fileKeys; onActivated: fileOps.copy(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
+    // Ctrl+X alone: StandardKey.Cut is Shift+Delete too on Linux, which
+    // deletes for good here.
+    Shortcut { sequence: "Ctrl+X"; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
     Shortcut { sequences: [StandardKey.Paste]; enabled: pane.fileKeys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
     Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.fileKeys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
     Shortcut { sequence: "Delete"; enabled: pane.fileKeys; onActivated: pane.deleteSelected() }
+    // Shift+Delete skips the trash, after asking.
+    Shortcut { sequence: "Shift+Del"; enabled: pane.fileKeys; onActivated: pane.confirmDelete(pane.selectedPaths()) }
     Shortcut { sequence: "F2"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
+    Shortcut { sequence: "Ctrl+Z"; enabled: pane.paneKeys; onActivated: fileOps.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; enabled: pane.paneKeys; onActivated: fileOps.redo() }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
-    // Escape narrows a selection of several back to the cursor, then ends
-    // a search.
+    // Escape stops file work under way; otherwise it dismisses a problem
+    // the banner says, narrows a selection of several back to the cursor,
+    // then ends a search.
+    Shortcut { sequence: "Escape"; enabled: pane.keys && fileOps.busy.length > 0; onActivated: fileOps.cancel() }
     Shortcut {
         sequence: "Escape"
-        enabled: pane.keys && (backend.folder.selectedCount > 1 || backend.folder.query.length > 0)
+        enabled: pane.keys && fileOps.busy.length === 0
+                 && (backend.message.length > 0 || backend.folder.selectedCount > 1 || backend.folder.query.length > 0)
         onActivated: {
-            if (backend.folder.selectedCount > 1)
+            if (backend.message.length > 0)
+                backend.dismissMessage()
+            else if (backend.folder.selectedCount > 1)
                 backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
             else
                 pathBar.endSearch()
         }
     }
-    Shortcut { sequence: "/"; enabled: pane.keys && backend.path !== "recent:"; onActivated: pathBar.search() }
+    Shortcut { sequence: "/"; enabled: pane.paneKeys && backend.path !== "recent:"; onActivated: pathBar.search() }
     // The right-click menu from the keyboard, beside the selected item.
     Shortcut {
         sequences: ["Alt+Return", "Alt+Enter", "Menu", "Shift+F10"]
@@ -152,19 +177,19 @@ FocusScope {
         }
     }
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
-    Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
+    Shortcut { sequences: [StandardKey.New]; enabled: pane.paneKeys; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
-    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.paneKeys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active && !pane.inTailnet; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
+    Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inView; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
     Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
     Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
-    Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
+    Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
     Shortcut { sequences: ["Alt+Right", "Forward"]; enabled: pane.active; onActivated: backend.forward() }
@@ -173,18 +198,30 @@ FocusScope {
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
-    Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
+    Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh(); plugins.refresh() } }
+
+    // A drive being ejected can't be in use: a pane showing a folder on it
+    // goes home, and its preview closes.
+    Connections {
+        target: places
+        function onReleasing(root) {
+            if (backend.path !== root && !backend.path.startsWith(root + "/"))
+                return
+            if (backend.previewing)
+                backend.togglePreview("")
+            backend.navigate(places.home)
+        }
+    }
 
     Connections {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
-        function onPeerOpened(host) { places.remember(host) }
     }
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
@@ -203,6 +240,13 @@ FocusScope {
     // folder, the new name): right away when the folder already lists it
     // (a long move's folder arrived long before the move was done),
     // otherwise once the folder has re-read.
+    // Names sort by the language's alphabet, so a switch lists the folder
+    // again.
+    Connections {
+        target: translator
+        function onChanged() { backend.folder.reload() }
+    }
+
     Connections {
         target: fileOps
         function onDone(folder, name) {
@@ -216,6 +260,10 @@ FocusScope {
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
+        // A drive about to be formatted or burned is left first, by every
+        // pane, and the sidebar shows it as it is afterwards.
+        function onReleasing(root) { places.leave(root) }
+        function onDrivesChanged() { places.refresh() }
     }
 
     Connections {
@@ -254,6 +302,7 @@ FocusScope {
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
         onPinRequested: (path) => pane.togglePin(path)
+        onBurnRequested: (path, drive) => pane.confirmBurn(path, drive)
     }
 
     ColumnLayout {
@@ -263,6 +312,25 @@ FocusScope {
         // Room for the path bar, which is drawn on top so it can reach over
         // the details column.
         Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight }
+        // Work that ends within a second, as most deletes and copies do,
+        // never flashes the banner: what's under way shows once it has
+        // taken a second. The timer starts when the work does, so progress
+        // updates don't keep putting it off.
+        Timer {
+            id: slowWork
+            interval: 1000
+            readonly property string working: backend.busy || fileOps.busy
+            property bool shown: false
+            onWorkingChanged: {
+                if (!working) {
+                    stop()
+                    shown = false
+                } else if (!shown && !running) {
+                    start()
+                }
+            }
+            onTriggered: shown = working.length > 0
+        }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
             Layout.fillWidth: true
@@ -276,9 +344,19 @@ FocusScope {
                 Text {
                     id: bannerText
                     Layout.fillWidth: true
-                    text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
+                    text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
                     color: theme.brightForeground
                     elide: Text.ElideRight
+                }
+                // File work can be stopped where it's shown. A click leaves
+                // the keyboard with the files, since the button goes once
+                // the work stops.
+                PlainButton {
+                    visible: fileOps.busy.length > 0 && bannerText.text === fileOps.busy
+                    focusPolicy: Qt.NoFocus
+                    implicitHeight: 28
+                    text: qsTr("Cancel")
+                    onClicked: fileOps.cancel()
                 }
                 IconButton {
                     visible: backend.message.length > 0
@@ -324,24 +402,14 @@ FocusScope {
                 item.focusView()
             }
 
-            // Files dropped on empty space land in this folder; folders
-            // inside take drops on themselves first.
-            DropArea {
-                id: viewDrop
+            // Files dropped on empty space land in this folder. The columns
+            // take drops on each column themselves, for the folder it shows.
+            FolderDrop {
                 anchors.fill: parent
                 z: -1
-                keys: ["text/uri-list"]
-                onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, backend.path) }
-                onDropped: (drop) => { fileOps.dropInto(drop.urls, backend.path); drop.accept(Qt.MoveAction) }
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    visible: viewDrop.containsDrag
-                    color: Qt.alpha(theme.accent, 0.05)
-                    border.width: 2
-                    border.color: theme.accent
-                    radius: Math.min(6, theme.radius)
-                }
+                enabled: pane.viewMode !== "columns"
+                folder: backend.path
+                items: view.item
             }
         }
         Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
@@ -349,12 +417,13 @@ FocusScope {
         Component { id: columnsView; FolderColumns { } }
     }
 
-    // Drawn over the window's top bar. It reaches left over the sidebar for
-    // the first pane (so the path starts at the window's edge) and right over
+    // Drawn over the window's top bar. It reaches back over the sidebar for
+    // the first pane (so the path starts at the window's edge) and on over
     // the details column for the last one (so the buttons end at the edge).
+    // Mirrored, the sidebar is on the right and the details on the left.
     PathBar {
         id: pathBar
-        x: -pane.barLeft
+        x: LayoutMirroring.enabled ? -pane.barExtension : -pane.barLeft
         width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true
@@ -399,6 +468,18 @@ FocusScope {
 
     ConfirmDialog {
         id: confirm
+        anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
+    }
+
+    FormatDialog {
+        id: formatDialog
+        anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
+    }
+
+    ClashDialog {
+        id: clash
         anchors.fill: parent
         onVisibleChanged: if (!visible) pane.focusView()
     }

@@ -16,6 +16,7 @@
 #include "filemanager1.h"
 #include "foldermodel.h"
 #include "places.h"
+#include "plugins.h"
 #include "previewer.h"
 #include "theme.h"
 #include "thumbnails.h"
@@ -102,6 +103,7 @@ static int preview(QGuiApplication &app) {
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+    QObject::connect(&translator, &Translator::changed, &previewer, &Previewer::relist);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
@@ -130,6 +132,9 @@ int main(int argc, char *argv[]) {
     Theme theme;
     Places places;
     Thumbnails thumbnails;
+    // Plugins' text follows the language too.
+    Plugins plugins(translator.language());
+    QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
 
     QString select;
     const QString start = startPath(app.arguments(), &select);
@@ -137,19 +142,20 @@ int main(int argc, char *argv[]) {
     QQmlEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+    engine.addImageProvider("plugin-icon", new PluginIconProvider);
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
+    engine.rootContext()->setContextProperty("plugins", &plugins);
 
-    Windows windows(&engine);
+    Windows windows(&engine, &plugins);
     if (!windows.open(start, select))
         return 1;
     FileManager1::registerOn(&windows);
 
     if (Drives *drives = places.drives()) {
-        QObject::connect(drives, &Drives::leaving, &windows, &Windows::leave);
         // A drive plugged in mounts through the last window used, which can
         // ask for an encrypted drive's passphrase; with none free, it mounts
         // without asking.

@@ -1,0 +1,9 @@
+{
+  "Couldn't send to %1: %2": "Không thể gửi đến %1: %2",
+  "Host": "Máy chủ",
+  "Machines": "Thiết bị",
+  "No machines are online": "Không có thiết bị nào đang trực tuyến",
+  "Sending to %1…": "Đang gửi đến %1…",
+  "Taildrop": "Taildrop",
+  "Tailnet": "Tailnet"
+}

@@ -1,0 +1,9 @@
+{
+  "Couldn't get a Dropbox link for %1: %2": "Odkaz Dropbox pro %1 se nepodařilo získat: %2",
+  "Dropbox": "Dropbox",
+  "Dropbox Link": "Odkaz Dropbox",
+  "Dropbox link for %1 copied.": "Odkaz Dropbox pro %1 byl zkopírován.",
+  "Getting a Dropbox link for %1…": "Získává se odkaz Dropbox pro %1…",
+  "stopped": "zastaveno",
+  "syncing": "synchronizuje se"
+}
