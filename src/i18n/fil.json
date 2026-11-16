@@ -40,6 +40,7 @@
     "one": "Isang item ang permanenteng mabubura. Hindi na ito maibabalik.",
     "other": "%Ln item ang permanenteng mabubura. Hindi na ito maibabalik."
   },
+  "A folder here is already called %1.": "Mayroon nang folder dito na %1 ang pangalan.",
   "A folder, or a server's address like sftp://host/": "Isang folder, o address ng server tulad ng sftp://host/",
   "A name can't contain \"/\".": "Hindi maaaring maglaman ng \"/\" ang isang pangalan.",
   "Add or remove one from the selection": "Magdagdag o mag-alis ng isa sa napili",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Palitan ang pangalan / i-duplicate",
   "Rename…": "Palitan ang pangalan…",
   "Replace": "Palitan",
+  "Replace %1?": "Palitan ang %1?",
+  "Replace %Ln files?": {
+    "one": "Palitan ang isang file?",
+    "other": "Palitan ang %Ln file?"
+  },
   "Replacing moves the one there now to the trash.": "Ililipat sa Basurahan ang kasalukuyang naroon kapag pinalitan ito.",
   "Restore": "Ibalik",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Ibinabalik ang %Ln item…"
   },
   "Right-click / Alt+⏎ / Menu": "Mag-right-click / Alt+⏎ / Menu",
+  "Save": "I-save",
   "Scroll": "Mag-scroll",
   "Search %1": "Maghanap sa %1",
   "Search %1 and below": "Maghanap sa %1 at mga subfolder nito",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Walang ma-extract sa %1.",
   "There's nothing to redo.": "Walang uulitin.",
   "There's nothing to undo.": "Walang babawiin.",
+  "These already exist here: %1": "Nandito na ang mga ito: %1",
   "This computer can't make %1 drives.": "Hindi makakagawa ang computer na ito ng mga %1 drive.",
   "This folder is empty": "Walang laman ang folder na ito",
   "This folder no longer exists.": "Wala na ang folder na ito.",

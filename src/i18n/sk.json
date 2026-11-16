@@ -42,6 +42,7 @@
     "few": "%Ln položky sa natrvalo odstránia. Túto akciu nemožno vrátiť späť.",
     "other": "%Ln položiek sa natrvalo odstráni. Túto akciu nemožno vrátiť späť."
   },
+  "A folder here is already called %1.": "Priečinok s názvom %1 tu už existuje.",
   "A folder, or a server's address like sftp://host/": "Priečinok alebo adresa servera, napríklad sftp://host/",
   "A name can't contain \"/\".": "Názov nemôže obsahovať \"/\".",
   "Add or remove one from the selection": "Pridať alebo odobrať z výberu",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Premenovať / duplikovať",
   "Rename…": "Premenovať…",
   "Replace": "Nahradiť",
+  "Replace %1?": "Nahradiť %1?",
+  "Replace %Ln files?": {
+    "one": "Nahradiť %Ln súbor?",
+    "few": "Nahradiť %Ln súbory?",
+    "other": "Nahradiť %Ln súborov?"
+  },
   "Replacing moves the one there now to the trash.": "Existujúca položka sa po nahradení presunie do koša.",
   "Restore": "Obnoviť",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Obnovovanie %Ln položiek…"
   },
   "Right-click / Alt+⏎ / Menu": "Kliknutie pravým tlačidlom / Alt+⏎ / Menu",
+  "Save": "Uložiť",
   "Scroll": "Posúvanie",
   "Search %1": "Hľadať v %1",
   "Search %1 and below": "Hľadať v %1 a podpriečinkoch",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "V %1 nie je nič na rozbalenie.",
   "There's nothing to redo.": "Nie je čo zopakovať.",
   "There's nothing to undo.": "Nie je čo vrátiť späť.",
+  "These already exist here: %1": "Tieto tu už existujú: %1",
   "This computer can't make %1 drives.": "Tento počítač nedokáže vytvárať jednotky %1.",
   "This folder is empty": "Tento priečinok je prázdny",
   "This folder no longer exists.": "Tento priečinok už neexistuje.",

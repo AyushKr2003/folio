@@ -12,9 +12,11 @@ Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
       m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
+    // Only a file chooser's windows have one.
+    engine->rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
 }
 
-Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
+Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent, QObject *chooser) {
     // A context per pane overrides `backend` and `fileOps`; everything else
     // comes from the contexts above it, shared.
     Pane pane;
@@ -24,6 +26,10 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
     pane.fileOps = new FileOps(this);
     pane.context->setContextProperty("backend", pane.backend);
     pane.context->setContextProperty("fileOps", pane.fileOps);
+    if (chooser) {
+        pane.context->setContextProperty("chooser", chooser);
+        pane.backend->setChoosing(true);
+    }
     pane.item = component.create(pane.context);
     if (!pane.item) {
         qWarning().noquote() << component.errorString();
@@ -34,8 +40,8 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
     return pane;
 }
 
-Backend *Windows::open(const QString &folder, const QString &select) {
-    Pane main = makePane(m_component, m_engine->rootContext());
+Backend *Windows::open(const QString &folder, const QString &select, QObject *chooser) {
+    Pane main = makePane(m_component, m_engine->rootContext(), chooser);
     auto *window = qobject_cast<QQuickWindow *>(main.item);
     if (!window) {
         release(main);
@@ -93,6 +99,7 @@ QObject *Windows::openSplit(QObject *window, const QString &folder) {
         w->split = makePane(m_pane, w->main.context);
         if (!w->split.item)
             return nullptr;
+        w->split.backend->setChoosing(w->main.backend->choosing());
         // Owned here, not by QML's garbage collector, though QML holds it.
         QQmlEngine::setObjectOwnership(w->split.item, QQmlEngine::CppOwnership);
         w->split.backend->navigate(folder);

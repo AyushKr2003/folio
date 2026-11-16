@@ -185,7 +185,8 @@ Rectangle {
                         ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
                 }
                 readonly property var current: apps.find(app => app.isDefault)
-                visible: apps.length > 1
+                // Another app's file dialog is no place to change one's apps.
+                visible: apps.length > 1 && !chooser
                 Layout.alignment: Qt.AlignRight
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
@@ -242,6 +243,8 @@ Rectangle {
 
         AbstractButton {
             id: openButton
+            // A file chooser answers from its own bar, not by opening.
+            visible: !chooser
             Layout.fillWidth: true
             implicitHeight: 40
             focusPolicy: Qt.NoFocus

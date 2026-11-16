@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Comment=Open and save dialogs for other apps
+Exec=folio chooser
+Icon=folio
+Terminal=false
+NoDisplay=true
+StartupWMClass=folio-chooser

@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln item akan dipadam secara kekal. Ini tidak boleh dibatalkan."
   },
+  "A folder here is already called %1.": "Folder di sini sudah bernama %1.",
   "A folder, or a server's address like sftp://host/": "Sebuah folder, atau alamat pelayan seperti sftp://host/",
   "A name can't contain \"/\".": "Nama tidak boleh mengandungi \"/\".",
   "Add or remove one from the selection": "Tambah atau buang satu daripada pilihan",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "Tukar nama / buat pendua",
   "Rename…": "Tukar Nama…",
   "Replace": "Ganti",
+  "Replace %1?": "Gantikan %1?",
+  "Replace %Ln files?": {
+    "other": "Gantikan %Ln fail?"
+  },
   "Replacing moves the one there now to the trash.": "Menggantinya akan memindahkan yang sedia ada ke tong sampah.",
   "Restore": "Pulihkan",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "Memulihkan %Ln item…"
   },
   "Right-click / Alt+⏎ / Menu": "Klik kanan / Alt+⏎ / Menu",
+  "Save": "Simpan",
   "Scroll": "Tatal",
   "Search %1": "Cari %1",
   "Search %1 and below": "Cari dalam %1 dan subfoldernya",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "Tiada apa-apa dalam %1 untuk diekstrak.",
   "There's nothing to redo.": "Tiada apa-apa untuk dibuat semula.",
   "There's nothing to undo.": "Tiada apa-apa untuk dibuat asal.",
+  "These already exist here: %1": "Ini sudah wujud di sini: %1",
   "This computer can't make %1 drives.": "Komputer ini tidak dapat membuat pemacu %1.",
   "This folder is empty": "Folder ini kosong",
   "This folder no longer exists.": "Folder ini tidak lagi wujud.",

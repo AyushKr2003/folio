@@ -40,6 +40,7 @@
     "one": "%Ln objekt kommer att tas bort permanent. Det kan inte ångras.",
     "other": "%Ln objekt kommer att tas bort permanent. Det kan inte ångras."
   },
+  "A folder here is already called %1.": "En mapp här heter redan %1.",
   "A folder, or a server's address like sftp://host/": "En mapp eller en serveradress som sftp://host/",
   "A name can't contain \"/\".": "Ett namn får inte innehålla \"/\".",
   "Add or remove one from the selection": "Lägg till eller ta bort ett objekt från markeringen",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Byt namn / duplicera",
   "Rename…": "Byt namn…",
   "Replace": "Ersätt",
+  "Replace %1?": "Ersätt %1?",
+  "Replace %Ln files?": {
+    "one": "Ersätt %Ln fil?",
+    "other": "Ersätt %Ln filer?"
+  },
   "Replacing moves the one there now to the trash.": "Om du ersätter flyttas den nuvarande till papperskorgen.",
   "Restore": "Återställ",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Återställer %Ln objekt…"
   },
   "Right-click / Alt+⏎ / Menu": "Högerklicka / Alt+⏎ / Menu",
+  "Save": "Spara",
   "Scroll": "Rulla",
   "Search %1": "Sök i %1",
   "Search %1 and below": "Sök i %1 och nedanför",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Det finns ingenting i %1 att extrahera.",
   "There's nothing to redo.": "Det finns inget att göra om.",
   "There's nothing to undo.": "Det finns inget att ångra.",
+  "These already exist here: %1": "Dessa finns redan här: %1",
   "This computer can't make %1 drives.": "Den här datorn kan inte skapa %1-enheter.",
   "This folder is empty": "Den här mappen är tom",
   "This folder no longer exists.": "Mappen finns inte längre.",

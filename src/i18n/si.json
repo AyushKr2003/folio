@@ -40,6 +40,7 @@
     "one": "%Ln අයිතමයක් ස්ථිරවම මකා දමනු ලැබේ. මෙය ආපසු හැරවිය නොහැක.",
     "other": "%Ln අයිතම ස්ථිරවම මකා දමනු ලැබේ. මෙය ආපසු හැරවිය නොහැක."
   },
+  "A folder here is already called %1.": "මෙහි දැනටමත් %1 නමැති ෆෝල්ඩරයක් ඇත.",
   "A folder, or a server's address like sftp://host/": "ෆෝල්ඩරයක්, හෝ sftp://host/ වැනි සේවාදායක ලිපිනයක්",
   "A name can't contain \"/\".": "නාමයක \"/\" අඩංගු විය නොහැක.",
   "Add or remove one from the selection": "තේරීමෙන් එකක් එක් කරන්න හෝ ඉවත් කරන්න",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "නම වෙනස් කරන්න / අනුපිටපත් කරන්න",
   "Rename…": "නම වෙනස් කරන්න…",
   "Replace": "ආදේශ කරන්න",
+  "Replace %1?": "%1 ප්‍රතිස්ථාපනය කරන්නද?",
+  "Replace %Ln files?": {
+    "one": "%Ln ගොනුවක් ප්‍රතිස්ථාපනය කරන්නද?",
+    "other": "%Ln ගොනු ප්‍රතිස්ථාපනය කරන්නද?"
+  },
   "Replacing moves the one there now to the trash.": "ආදේශ කළ විට දැනට එහි ඇති එක කුණු බඳුනට යයි.",
   "Restore": "ප්‍රතිස්ථාපනය කරන්න",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln අයිතම ප්‍රතිස්ථාපනය කරමින්…"
   },
   "Right-click / Alt+⏎ / Menu": "දකුණු ක්ලික් කරන්න / Alt+⏎ / මෙනුව",
+  "Save": "සුරකින්න",
   "Scroll": "අනුචලනය කරන්න",
   "Search %1": "%1 සොයන්න",
   "Search %1 and below": "%1 සහ ඊට පහළ සොයන්න",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1 හි උපුටා ගැනීමට කිසිවක් නැත.",
   "There's nothing to redo.": "නැවත කිරීමට කිසිවක් නැත.",
   "There's nothing to undo.": "අවලංගු කිරීමට කිසිවක් නැත.",
+  "These already exist here: %1": "මේවා දැනටමත් මෙහි ඇත: %1",
   "This computer can't make %1 drives.": "මෙම පරිගණකයට %1 ධාවක සෑදිය නොහැක.",
   "This folder is empty": "මෙම ෆෝල්ඩරය හිස්ය",
   "This folder no longer exists.": "මෙම ෆෝල්ඩරය තවදුරටත් නැත.",

@@ -109,6 +109,6 @@ Done, tested, and verified offscreen:
 
 ## Open questions
 
-- **File chooser.** Open/save dialogs in other apps come from `xdg-desktop-portal-gtk`, not Nautilus, so they keep working. Should Folio later provide the portal's FileChooser so dialogs look and behave like Folio?
+- **File chooser.** Open/save dialogs in other apps come from `xdg-desktop-portal-gtk`, not Nautilus, so they keep working. Folio now provides the portal's FileChooser too, as `folio chooser`, turned on in `hyprland-portals.conf` (see the README). Should Omarchy make it the default, and float `folio-chooser` windows?
 - **Nautilus as an option.** Offer `omarchy-install-nautilus` for people who want it back (with LocalSearch masked)?
 - **Thumbnail sizes on HiDPI.** Request `x-large` (512) on scaled outputs, or keep `large` and accept softer tiles?

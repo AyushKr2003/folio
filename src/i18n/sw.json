@@ -40,6 +40,7 @@
     "one": "%Ln kipengee kitafutwa kabisa. Hili haliwezi kutenduliwa.",
     "other": "%Ln vipengee vitafutwa kabisa. Hili haliwezi kutenduliwa."
   },
+  "A folder here is already called %1.": "Folda hapa tayari inaitwa %1.",
   "A folder, or a server's address like sftp://host/": "Folda, au anwani ya seva kama sftp://host/",
   "A name can't contain \"/\".": "Jina haliwezi kuwa na \"/\".",
   "Add or remove one from the selection": "Ongeza au ondoa moja kwenye uteuzi",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Badili jina / rudufu",
   "Rename…": "Badili jina…",
   "Replace": "Badilisha",
+  "Replace %1?": "Badilisha %1?",
+  "Replace %Ln files?": {
+    "one": "Badilisha %Ln faili?",
+    "other": "Badilisha %Ln faili?"
+  },
   "Replacing moves the one there now to the trash.": "Kubadilisha kutahamisha iliyopo sasa kwenye takataka.",
   "Restore": "Rejesha",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Inarejesha %Ln vipengee…"
   },
   "Right-click / Alt+⏎ / Menu": "Bofya kulia / Alt+⏎ / Menu",
+  "Save": "Hifadhi",
   "Scroll": "Sogeza",
   "Search %1": "Tafuta %1",
   "Search %1 and below": "Tafuta %1 na chini yake",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Hakuna chochote kwenye %1 cha kupanua.",
   "There's nothing to redo.": "Hakuna cha kurudia.",
   "There's nothing to undo.": "Hakuna cha kutendua.",
+  "These already exist here: %1": "Hizi tayari zipo hapa: %1",
   "This computer can't make %1 drives.": "Kompyuta hii haiwezi kuunda viendeshi vya %1.",
   "This folder is empty": "Folda hii ni tupu",
   "This folder no longer exists.": "Folda hii haipo tena.",

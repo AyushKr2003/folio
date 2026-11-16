@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln 項目は完全に削除されます。元に戻せません。"
   },
+  "A folder here is already called %1.": "ここにはすでに %1 という名前のフォルダーがあります。",
   "A folder, or a server's address like sftp://host/": "フォルダー、または sftp://host/ のようなサーバーのアドレス",
   "A name can't contain \"/\".": "名前に \"/\" は含められません。",
   "Add or remove one from the selection": "選択に追加または選択から削除",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "名前を変更 / 複製",
   "Rename…": "名前を変更…",
   "Replace": "置き換える",
+  "Replace %1?": "%1 を置き換えますか？",
+  "Replace %Ln files?": {
+    "other": "%Ln 個のファイルを置き換えますか？"
+  },
   "Replacing moves the one there now to the trash.": "置き換えると、現在あるものはゴミ箱へ移動します。",
   "Restore": "元に戻す",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "%Ln 項目を元に戻し中…"
   },
   "Right-click / Alt+⏎ / Menu": "右クリック / Alt+⏎ / メニュー",
+  "Save": "保存",
   "Scroll": "スクロール",
   "Search %1": "%1 を検索",
   "Search %1 and below": "%1 とその中を検索",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "%1 には展開するものがありません。",
   "There's nothing to redo.": "やり直せるものはありません。",
   "There's nothing to undo.": "元に戻せるものはありません。",
+  "These already exist here: %1": "これらはすでにここに存在します: %1",
   "This computer can't make %1 drives.": "このコンピューターでは %1 ドライブを作成できません。",
   "This folder is empty": "このフォルダーは空です",
   "This folder no longer exists.": "このフォルダーはもう存在しません。",

@@ -41,6 +41,7 @@
     "one": "%Ln item will be deleted permanently. This can't be undone.",
     "other": "%Ln items will be deleted permanently. This can't be undone."
   },
+  "A folder here is already called %1.": "A folder here is already called %1.",
   "A folder, or a server's address like sftp://host/": "A folder, or a server's address like sftp://host/",
   "A name can't contain \"/\".": "A name can't contain \"/\".",
   "Add or remove one from the selection": "Add or remove one from the selection",
@@ -326,6 +327,11 @@
   "Rename / duplicate": "Rename / duplicate",
   "Rename…": "Rename…",
   "Replace": "Replace",
+  "Replace %1?": "Replace %1?",
+  "Replace %Ln files?": {
+    "one": "Replace %Ln file?",
+    "other": "Replace %Ln files?"
+  },
   "Replacing moves the one there now to the trash.": "Replacing moves the one there now to the trash.",
   "Restore": "Restore",
   "Restore %Ln Items": {
@@ -348,6 +354,7 @@
     "other": "Restoring %Ln items…"
   },
   "Right-click / Alt+⏎ / Menu": "Right-click / Alt+⏎ / Menu",
+  "Save": "Save",
   "Scroll": "Scroll",
   "Search %1": "Search %1",
   "Search %1 and below": "Search %1 and below",
@@ -396,6 +403,7 @@
   "There's nothing in %1 to extract.": "There's nothing in %1 to extract.",
   "There's nothing to redo.": "There's nothing to redo.",
   "There's nothing to undo.": "There's nothing to undo.",
+  "These already exist here: %1": "These already exist here: %1",
   "This computer can't make %1 drives.": "This computer can't make %1 drives.",
   "This folder is empty": "This folder is empty",
   "This folder no longer exists.": "This folder no longer exists.",

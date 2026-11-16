@@ -42,6 +42,7 @@
     "few": "%Ln elemente vor fi șterse definitiv. Acțiunea nu poate fi anulată.",
     "other": "%Ln de elemente vor fi șterse definitiv. Acțiunea nu poate fi anulată."
   },
+  "A folder here is already called %1.": "Există deja aici un dosar cu numele %1.",
   "A folder, or a server's address like sftp://host/": "Un dosar sau adresa unui server, ca sftp://host/",
   "A name can't contain \"/\".": "Un nume nu poate conține „/”.",
   "Add or remove one from the selection": "Adaugă sau elimină un element din selecție",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Redenumește / duplică",
   "Rename…": "Redenumește…",
   "Replace": "Înlocuiește",
+  "Replace %1?": "Înlocuiești %1?",
+  "Replace %Ln files?": {
+    "one": "Înlocuiești un fișier?",
+    "few": "Înlocuiești %Ln fișiere?",
+    "other": "Înlocuiești %Ln de fișiere?"
+  },
   "Replacing moves the one there now to the trash.": "Înlocuirea mută elementul existent în coșul de gunoi.",
   "Restore": "Restaurează",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Se restaurează %Ln de elemente…"
   },
   "Right-click / Alt+⏎ / Menu": "Clic dreapta / Alt+⏎ / Meniu",
+  "Save": "Salvează",
   "Scroll": "Derulează",
   "Search %1": "Caută în %1",
   "Search %1 and below": "Caută în %1 și în subdosare",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "Nu există nimic de extras din %1.",
   "There's nothing to redo.": "Nu există nimic de refăcut.",
   "There's nothing to undo.": "Nu există nimic de anulat.",
+  "These already exist here: %1": "Acestea există deja aici: %1",
   "This computer can't make %1 drives.": "Acest computer nu poate crea unități %1.",
   "This folder is empty": "Acest dosar este gol",
   "This folder no longer exists.": "Acest dosar nu mai există.",

@@ -42,6 +42,7 @@
     "two": "שני פריטים יימחקו לצמיתות. לא ניתן לבטל פעולה זו.",
     "other": "%Ln פריטים יימחקו לצמיתות. לא ניתן לבטל פעולה זו."
   },
+  "A folder here is already called %1.": "כבר קיימת כאן תיקייה בשם %1.",
   "A folder, or a server's address like sftp://host/": "תיקייה, או כתובת שרת כמו sftp://host/",
   "A name can't contain \"/\".": "שם אינו יכול להכיל \"/\".",
   "Add or remove one from the selection": "הוספה או הסרה מהבחירה",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "שינוי שם / שכפול",
   "Rename…": "שינוי שם…",
   "Replace": "החלפה",
+  "Replace %1?": "להחליף את %1?",
+  "Replace %Ln files?": {
+    "one": "להחליף קובץ אחד?",
+    "two": "להחליף שני קבצים?",
+    "other": "להחליף %Ln קבצים?"
+  },
   "Replacing moves the one there now to the trash.": "ההחלפה מעבירה את הפריט הקיים לאשפה.",
   "Restore": "שחזור",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "משחזר %Ln פריטים…"
   },
   "Right-click / Alt+⏎ / Menu": "לחיצה ימנית / Alt+⏎ / Menu",
+  "Save": "שמירה",
   "Scroll": "גלילה",
   "Search %1": "חיפוש ב־%1",
   "Search %1 and below": "חיפוש ב־%1 ובתיקיות משנה",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "אין מה לחלץ ב־%1.",
   "There's nothing to redo.": "אין מה לבצע שוב.",
   "There's nothing to undo.": "אין מה לבטל.",
+  "These already exist here: %1": "אלה כבר קיימים כאן: %1",
   "This computer can't make %1 drives.": "המחשב הזה לא יכול ליצור כונני %1.",
   "This folder is empty": "התיקייה הזו ריקה",
   "This folder no longer exists.": "התיקייה הזו כבר לא קיימת.",

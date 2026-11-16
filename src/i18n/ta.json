@@ -40,6 +40,7 @@
     "one": "ஒரு உருப்படி நிரந்தரமாக நீக்கப்படும். இதைச் செயல்தவிர்க்க முடியாது.",
     "other": "%Ln உருப்படிகள் நிரந்தரமாக நீக்கப்படும். இதைச் செயல்தவிர்க்க முடியாது."
   },
+  "A folder here is already called %1.": "இங்கே ஏற்கனவே %1 என்ற பெயரில் ஒரு கோப்புறை உள்ளது.",
   "A folder, or a server's address like sftp://host/": "ஒரு கோப்புறை, அல்லது sftp://host/ போன்ற சேவையக முகவரி",
   "A name can't contain \"/\".": "பெயரில் \"/\" இருக்கக்கூடாது.",
   "Add or remove one from the selection": "தேர்வில் ஒன்றைச் சேர் அல்லது நீக்கு",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "மறுபெயரிடு / படியெடு",
   "Rename…": "மறுபெயரிடு…",
   "Replace": "மாற்று",
+  "Replace %1?": "%1 ஐ மாற்றவா?",
+  "Replace %Ln files?": {
+    "one": "ஒரு கோப்பை மாற்றவா?",
+    "other": "%Ln கோப்புகளை மாற்றவா?"
+  },
   "Replacing moves the one there now to the trash.": "மாற்றுவது தற்போது உள்ளதைக் குப்பைக்கு நகர்த்தும்.",
   "Restore": "மீட்டமை",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln உருப்படிகளை மீட்டமைக்கிறது…"
   },
   "Right-click / Alt+⏎ / Menu": "வலது சொடுக்கு / Alt+⏎ / Menu",
+  "Save": "சேமி",
   "Scroll": "உருட்டு",
   "Search %1": "%1 ஐத் தேடு",
   "Search %1 and below": "%1 இலும் அதன் கீழும் தேடு",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1 இல் பிரித்தெடுக்க எதுவும் இல்லை.",
   "There's nothing to redo.": "மீண்டும் செய்ய எதுவும் இல்லை.",
   "There's nothing to undo.": "செயல்தவிர்க்க எதுவும் இல்லை.",
+  "These already exist here: %1": "இவை இங்கே ஏற்கனவே உள்ளன: %1",
   "This computer can't make %1 drives.": "இந்தக் கணினியால் %1 இயக்ககங்களை உருவாக்க முடியாது.",
   "This folder is empty": "இந்தக் கோப்புறை காலியாக உள்ளது",
   "This folder no longer exists.": "இந்தக் கோப்புறை இனி இல்லை.",

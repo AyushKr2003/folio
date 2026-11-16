@@ -40,6 +40,7 @@
     "one": "%Ln elem véglegesen törlődik. Ez nem vonható vissza.",
     "other": "%Ln elem véglegesen törlődik. Ez nem vonható vissza."
   },
+  "A folder here is already called %1.": "Itt már van %1 nevű mappa.",
   "A folder, or a server's address like sftp://host/": "Mappa vagy kiszolgálócím, például sftp://host/",
   "A name can't contain \"/\".": "A név nem tartalmazhat „/” jelet.",
   "Add or remove one from the selection": "Egy elem kijelölése vagy kijelölésének megszüntetése",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Átnevezés / megkettőzés",
   "Rename…": "Átnevezés…",
   "Replace": "Csere",
+  "Replace %1?": "%1 felülírása?",
+  "Replace %Ln files?": {
+    "one": "%Ln fájl felülírása?",
+    "other": "%Ln fájl felülírása?"
+  },
   "Replacing moves the one there now to the trash.": "A csere a jelenleg ott lévő elemet a Kukába helyezi.",
   "Restore": "Visszaállítás",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln elem visszaállítása…"
   },
   "Right-click / Alt+⏎ / Menu": "Jobb kattintás / Alt+⏎ / Menü",
+  "Save": "Mentés",
   "Scroll": "Görgetés",
   "Search %1": "Keresés: %1",
   "Search %1 and below": "Keresés: %1 és alatta",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1-ben nincs semmi kibontani való.",
   "There's nothing to redo.": "Nincs mit újra végrehajtani.",
   "There's nothing to undo.": "Nincs mit visszavonni.",
+  "These already exist here: %1": "Ezek már léteznek itt: %1",
   "This computer can't make %1 drives.": "Ez a számítógép nem tud %1 meghajtót készíteni.",
   "This folder is empty": "Ez a mappa üres",
   "This folder no longer exists.": "Ez a mappa már nem létezik.",

@@ -211,6 +211,10 @@ void Backend::open(const QString &path) {
         navigate(path);
         return;
     }
+    if (m_choosing) {
+        emit chosen(path);
+        return;
+    }
     // The desktop's default app for the type, or for the nearest type it
     // belongs to.
     if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
@@ -228,6 +232,7 @@ void Backend::goUp() {
     // Arriving back in the parent keeps the folder we came from selected, so
     // going up and down again is one keystroke each way.
     m_pendingSelection = QFileInfo(path()).fileName();
+    m_leftBehind = true;
     navigate(parent);
 }
 
@@ -237,11 +242,14 @@ void Backend::back() {
     if (!canBack())
         return;
     const QString pending = m_pendingSelection;
+    const bool leftBehind = m_leftBehind;
     m_pendingSelection = QFileInfo(path()).fileName();
+    m_leftBehind = true;
     --m_index;
     if (!go(m_history.at(m_index), false)) {
         ++m_index;
         m_pendingSelection = pending;
+        m_leftBehind = leftBehind;
     }
 }
 
@@ -585,6 +593,8 @@ QString Backend::completePath(const QString &text) const {
 }
 
 void Backend::newWindow() {
+    if (m_choosing)
+        return;
     emit newWindowRequested(FolderModel::isView(path()) ? m_home : path());
 }
 
@@ -621,6 +631,7 @@ void Backend::showFolder(const QString &path) {
 void Backend::showItem(const QString &path) {
     const QFileInfo info(path);
     m_pendingSelection = info.fileName();
+    m_leftBehind = false;
     const QString parent = info.absolutePath();
     if (parent == this->path()) {
         emit selectRequested(m_pendingSelection);

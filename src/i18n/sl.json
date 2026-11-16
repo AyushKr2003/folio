@@ -44,6 +44,7 @@
     "few": "%Ln elementi bodo trajno izbrisani. Tega ni mogoče razveljaviti.",
     "other": "%Ln elementov bo trajno izbrisanih. Tega ni mogoče razveljaviti."
   },
+  "A folder here is already called %1.": "Mapa tukaj se že imenuje %1.",
   "A folder, or a server's address like sftp://host/": "Mapa ali naslov strežnika, na primer sftp://host/",
   "A name can't contain \"/\".": "Ime ne sme vsebovati »/«.",
   "Add or remove one from the selection": "Dodaj ali odstrani element iz izbire",
@@ -368,6 +369,13 @@
   "Rename / duplicate": "Preimenuj / podvoji",
   "Rename…": "Preimenuj…",
   "Replace": "Zamenjaj",
+  "Replace %1?": "Zamenjaj %1?",
+  "Replace %Ln files?": {
+    "one": "Zamenjaj %Ln datoteko?",
+    "two": "Zamenjaj %Ln datoteki?",
+    "few": "Zamenjaj %Ln datoteke?",
+    "other": "Zamenjaj %Ln datotek?"
+  },
   "Replacing moves the one there now to the trash.": "Z zamenjavo se trenutni element premakne v smeti.",
   "Restore": "Obnovi",
   "Restore %Ln Items": {
@@ -398,6 +406,7 @@
     "other": "Obnavljanje %Ln elementov…"
   },
   "Right-click / Alt+⏎ / Menu": "Desni klik / Alt+⏎ / Meni",
+  "Save": "Shrani",
   "Scroll": "Pomikanje",
   "Search %1": "Išči v %1",
   "Search %1 and below": "Išči v %1 in podmapah",
@@ -448,6 +457,7 @@
   "There's nothing in %1 to extract.": "V %1 ni ničesar za razpakiranje.",
   "There's nothing to redo.": "Ni ničesar za ponovitev.",
   "There's nothing to undo.": "Ni ničesar za razveljavitev.",
+  "These already exist here: %1": "Tukaj že obstajajo: %1",
   "This computer can't make %1 drives.": "Ta računalnik ne more ustvariti %1 pogonov.",
   "This folder is empty": "Ta mapa je prazna",
   "This folder no longer exists.": "Ta mapa ne obstaja več.",

@@ -42,6 +42,7 @@
     "few": "%Ln elementai bus ištrinti visam laikui. Šio veiksmo atšaukti negalima.",
     "other": "%Ln elementų bus ištrinta visam laikui. Šio veiksmo atšaukti negalima."
   },
+  "A folder here is already called %1.": "Čia jau yra aplankas pavadinimu „%1“.",
   "A folder, or a server's address like sftp://host/": "Aplankas arba serverio adresas, pvz., sftp://host/",
   "A name can't contain \"/\".": "Pavadinime negali būti ženklo „/“.",
   "Add or remove one from the selection": "Pridėti arba pašalinti iš pažymėtų",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Pervadinti / dubliuoti",
   "Rename…": "Pervadinti…",
   "Replace": "Pakeisti",
+  "Replace %1?": "Pakeisti „%1“?",
+  "Replace %Ln files?": {
+    "one": "Pakeisti %Ln failą?",
+    "few": "Pakeisti %Ln failus?",
+    "other": "Pakeisti %Ln failų?"
+  },
   "Replacing moves the one there now to the trash.": "Pakeičiant, esamas perkeliamas į šiukšlinę.",
   "Restore": "Atkurti",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Atkuriama %Ln elementų…"
   },
   "Right-click / Alt+⏎ / Menu": "Dešinysis spustelėjimas / Alt+⏎ / Meniu",
+  "Save": "Išsaugoti",
   "Scroll": "Slinkti",
   "Search %1": "Ieškoti %1",
   "Search %1 and below": "Ieškoti %1 ir jo poaplankiuose",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "%1 nėra ko išskleisti.",
   "There's nothing to redo.": "Nėra ko pakartoti.",
   "There's nothing to undo.": "Nėra ko anuliuoti.",
+  "These already exist here: %1": "Šie čia jau yra: %1",
   "This computer can't make %1 drives.": "Šis kompiuteris negali kurti %1 diskų.",
   "This folder is empty": "Šis aplankas tuščias",
   "This folder no longer exists.": "Šio aplanko nebėra.",

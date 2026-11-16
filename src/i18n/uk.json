@@ -44,6 +44,7 @@
     "many": "%Ln елементів буде видалено назавжди. Цю дію не можна скасувати.",
     "other": "%Ln елемента буде видалено назавжди. Цю дію не можна скасувати."
   },
+  "A folder here is already called %1.": "Тека тут уже називається %1.",
   "A folder, or a server's address like sftp://host/": "Тека або адреса сервера, наприклад sftp://host/",
   "A name can't contain \"/\".": "Назва не може містити «/».",
   "Add or remove one from the selection": "Додати до виділення або прибрати з нього",
@@ -368,6 +369,13 @@
   "Rename / duplicate": "Перейменувати / дублювати",
   "Rename…": "Перейменувати…",
   "Replace": "Замінити",
+  "Replace %1?": "Замінити %1?",
+  "Replace %Ln files?": {
+    "one": "Замінити %Ln файл?",
+    "few": "Замінити %Ln файли?",
+    "many": "Замінити %Ln файлів?",
+    "other": "Замінити %Ln файл?"
+  },
   "Replacing moves the one there now to the trash.": "Заміна перемістить наявний елемент до смітника.",
   "Restore": "Відновити",
   "Restore %Ln Items": {
@@ -398,6 +406,7 @@
     "other": "Відновлюється %Ln елемента…"
   },
   "Right-click / Alt+⏎ / Menu": "Права кнопка миші / Alt+⏎ / Menu",
+  "Save": "Зберегти",
   "Scroll": "Прокручування",
   "Search %1": "Шукати у %1",
   "Search %1 and below": "Шукати у %1 та підтеках",
@@ -448,6 +457,7 @@
   "There's nothing in %1 to extract.": "У %1 немає нічого для розпакування.",
   "There's nothing to redo.": "Нічого повторювати.",
   "There's nothing to undo.": "Нічого скасовувати.",
+  "These already exist here: %1": "Ці елементи вже існують тут: %1",
   "This computer can't make %1 drives.": "Цей комп’ютер не може створювати диски %1.",
   "This folder is empty": "Ця тека порожня",
   "This folder no longer exists.": "Цієї теки більше не існує.",

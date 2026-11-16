@@ -40,6 +40,7 @@
     "one": "%Ln item wordt permanent verwijderd. Dit kan niet ongedaan worden gemaakt.",
     "other": "%Ln items worden permanent verwijderd. Dit kan niet ongedaan worden gemaakt."
   },
+  "A folder here is already called %1.": "Er is hier al een map met de naam %1.",
   "A folder, or a server's address like sftp://host/": "Een map, of een serveradres zoals sftp://host/",
   "A name can't contain \"/\".": "Een naam mag geen \"/\" bevatten.",
   "Add or remove one from the selection": "Eén item toevoegen aan of verwijderen uit de selectie",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Hernoemen / dupliceren",
   "Rename…": "Hernoemen…",
   "Replace": "Vervangen",
+  "Replace %1?": "%1 vervangen?",
+  "Replace %Ln files?": {
+    "one": "%Ln bestand vervangen?",
+    "other": "%Ln bestanden vervangen?"
+  },
   "Replacing moves the one there now to the trash.": "Bij vervangen wordt het bestaande item naar de prullenbak verplaatst.",
   "Restore": "Terugzetten",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln items terugzetten…"
   },
   "Right-click / Alt+⏎ / Menu": "Rechtermuisklik / Alt+⏎ / Menu",
+  "Save": "Opslaan",
   "Scroll": "Scrollen",
   "Search %1": "%1 doorzoeken",
   "Search %1 and below": "%1 en onderliggende mappen doorzoeken",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Er is niets in %1 om uit te pakken.",
   "There's nothing to redo.": "Er is niets om opnieuw uit te voeren.",
   "There's nothing to undo.": "Er is niets om ongedaan te maken.",
+  "These already exist here: %1": "Deze bestaan hier al: %1",
   "This computer can't make %1 drives.": "Deze computer kan geen %1-schijven maken.",
   "This folder is empty": "Deze map is leeg",
   "This folder no longer exists.": "Deze map bestaat niet meer.",

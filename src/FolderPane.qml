@@ -50,7 +50,11 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    // Whether a path is being typed in the pane's bar.
+    readonly property bool editingPath: pathBar.editing
+    readonly property bool typing: asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    // Whether one of the pane's dialogs is up, waiting on an answer.
+    readonly property bool asking: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where
@@ -84,6 +88,8 @@ FocusScope {
     readonly property bool inView: backend.path.startsWith("plugin:")
     readonly property bool fileKeys: keys && !inView
     Binding { target: backend.folder; property: "items"; value: (plugins.views[backend.path] || {}).items || [] }
+    // In a file chooser, only the files that fit the app's filter.
+    Binding { target: backend.folder; property: "filter"; value: chooser ? chooser.patterns : [] }
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -277,13 +283,26 @@ FocusScope {
         function onLoaded() {
             if (!view.item)
                 return
+            const leftBehind = backend.leftBehind()
             const pending = backend.takeSelection()
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
             const row = backend.folder.indexOfPath(pane.lastPath)
+            // A file chooser answering with the folder shown (saving, or
+            // picking a folder) arrives with no cursor: one on a subfolder,
+            // the first or the one just left, would look chosen, its
+            // contents beside it in the columns, while the answer is the
+            // folder shown. An item picked to show is still shown.
+            const answersHere = !!chooser && chooser.mode !== "open"
+            // Going up or back names the folder just left, whether or not it
+            // had loaded; anything else pending was picked.
+            const arrived = pending ? leftBehind : !same
             if (pending || !same)
                 pane.cursorLetGo = false
-            if (pending)
+            if (answersHere && arrived) {
+                backend.folder.selectOnly(-1)
+                view.item.letGo()
+            } else if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
             else if (!same)
                 view.item.select(-1, false)

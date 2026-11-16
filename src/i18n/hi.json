@@ -40,6 +40,7 @@
     "one": "एक आइटम को स्थायी रूप से हटा दिया जाएगा। इसे वापस नहीं किया जा सकता।",
     "other": "%Ln आइटम को स्थायी रूप से हटा दिया जाएगा। इसे वापस नहीं किया जा सकता।"
   },
+  "A folder here is already called %1.": "यहाँ पहले से एक फ़ोल्डर का नाम %1 है।",
   "A folder, or a server's address like sftp://host/": "फ़ोल्डर, या सर्वर का पता जैसे sftp://host/",
   "A name can't contain \"/\".": "नाम में \"/\" नहीं हो सकता।",
   "Add or remove one from the selection": "चयन में एक जोड़ें या हटाएँ",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "नाम बदलें / डुप्लिकेट करें",
   "Rename…": "नाम बदलें…",
   "Replace": "बदल दें",
+  "Replace %1?": "%1 को प्रतिस्थापित करें?",
+  "Replace %Ln files?": {
+    "one": "एक फ़ाइल को प्रतिस्थापित करें?",
+    "other": "%Ln फ़ाइलों को प्रतिस्थापित करें?"
+  },
   "Replacing moves the one there now to the trash.": "बदलने पर वहाँ मौजूद आइटम रद्दी में चला जाएगा।",
   "Restore": "पुनर्स्थापित करें",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln आइटम पुनर्स्थापित किए जा रहे हैं…"
   },
   "Right-click / Alt+⏎ / Menu": "दायाँ-क्लिक / Alt+⏎ / मेनू",
+  "Save": "सहेजें",
   "Scroll": "स्क्रॉल करें",
   "Search %1": "%1 में खोजें",
   "Search %1 and below": "%1 और उसके उपफ़ोल्डरों में खोजें",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1 में निकालने के लिए कुछ नहीं है।",
   "There's nothing to redo.": "फिर से करने के लिए कुछ नहीं है।",
   "There's nothing to undo.": "पूर्ववत करने के लिए कुछ नहीं है।",
+  "These already exist here: %1": "ये यहाँ पहले से मौजूद हैं: %1",
   "This computer can't make %1 drives.": "यह कंप्यूटर %1 ड्राइव नहीं बना सकता।",
   "This folder is empty": "यह फ़ोल्डर खाली है",
   "This folder no longer exists.": "यह फ़ोल्डर अब मौजूद नहीं है।",

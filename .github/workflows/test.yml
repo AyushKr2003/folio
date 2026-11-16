@@ -1,44 +1,48 @@
-name: Build and test
+name: Test
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, master]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     name: Build and test
     runs-on: ubuntu-latest
-    # Folio is an Arch package built against Arch's Qt, so it's tested there.
+    # The app ships as an Arch package built against Arch's Qt, so it's tested there.
     container: archlinux:latest
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Install the build and test dependencies
-        # Arch is rolling, so update first; poppler is for the PDF thumbnail
-        # test, which skips without it, and jq for the Tailscale plugin's.
-        run: |
-          pacman -Syu --noconfirm --needed \
-            base-devel cmake git \
-            glib2 libarchive zlib xdg-utils hicolor-icon-theme \
-            qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland \
-            poppler jq
-
-      - name: Set up a user and a locale like a desktop's
-        # The container runs as root, which can read any folder, so the tests
-        # about unreadable ones need an ordinary user; and names sort by the
-        # locale, which the container doesn't generate.
-        run: |
-          useradd -m tester
-          sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
-          locale-gen
+      - name: Install git for the checkout
+        run: pacman -Syu --noconfirm --needed git
 
       - uses: actions/checkout@v4
 
-      - name: Build
+      - name: Install the package's dependencies
+        # The package lives in omarchy-pkgs, so its PKGBUILD is the one list of what the app needs and CI reads it rather than keeping a copy.
         run: |
+          curl -fsSL "https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/${{ github.event.repository.name }}/PKGBUILD" -o "$RUNNER_TEMP/PKGBUILD"
+          source "$RUNNER_TEMP/PKGBUILD"
+          deps=("${depends[@]}" "${makedepends[@]}" "${checkdepends[@]}")
+          pacman -S --noconfirm --needed base-devel cmake dbus "${deps[@]%%[<>=]*}"
+
+      - name: Set up a user and a locale like a desktop's
+        # Root can read any file, so tests about unreadable ones need an ordinary user, with a second group for tests that change a file's group; and the container generates no locale.
+        run: |
+          useradd -m tester
+          groupadd other
+          usermod -aG other tester
           chown -R tester .
-          su tester -c 'bin/build'
+          sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+          locale-gen
+
+      - name: Build
+        run: su tester -c bin/build
 
       - name: Test
-        # Some tests talk to a session bus (the desktop's file manager
-        # interface), which a container doesn't have.
         run: su tester -c 'LANG=en_US.UTF-8 dbus-run-session -- bin/test'

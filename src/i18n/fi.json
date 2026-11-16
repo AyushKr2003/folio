@@ -40,6 +40,7 @@
     "one": "%Ln kohde poistetaan pysyvästi. Tätä ei voi kumota.",
     "other": "%Ln kohdetta poistetaan pysyvästi. Tätä ei voi kumota."
   },
+  "A folder here is already called %1.": "Täällä on jo kansio nimeltä %1.",
   "A folder, or a server's address like sftp://host/": "Kansio tai palvelimen osoite, kuten sftp://host/",
   "A name can't contain \"/\".": "Nimessä ei voi olla \"/\"-merkkiä.",
   "Add or remove one from the selection": "Lisää tai poista yksi valinnasta",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Nimeä uudelleen / monista",
   "Rename…": "Nimeä uudelleen…",
   "Replace": "Korvaa",
+  "Replace %1?": "Korvataanko %1?",
+  "Replace %Ln files?": {
+    "one": "Korvataanko %Ln tiedosto?",
+    "other": "Korvataanko %Ln tiedostoa?"
+  },
   "Replacing moves the one there now to the trash.": "Korvaaminen siirtää nykyisen roskakoriin.",
   "Restore": "Palauta",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Palautetaan %Ln kohdetta…"
   },
   "Right-click / Alt+⏎ / Menu": "Napsauta oikealla / Alt+⏎ / Valikko",
+  "Save": "Tallenna",
   "Scroll": "Vieritä",
   "Search %1": "Hae kohteesta %1",
   "Search %1 and below": "Hae kohteesta %1 ja sen alta",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Kohteessa %1 ei ole mitään purettavaa.",
   "There's nothing to redo.": "Ei ole mitään tehtävää uudelleen.",
   "There's nothing to undo.": "Ei ole mitään kumottavaa.",
+  "These already exist here: %1": "Nämä ovat jo olemassa täällä: %1",
   "This computer can't make %1 drives.": "Tällä tietokoneella ei voi luoda %1-asemia.",
   "This folder is empty": "Tämä kansio on tyhjä",
   "This folder no longer exists.": "Tätä kansiota ei enää ole.",

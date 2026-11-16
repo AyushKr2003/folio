@@ -40,6 +40,7 @@
     "one": "%Ln ta element butunlay oʻchiriladi. Buni bekor qilib boʻlmaydi.",
     "other": "%Ln ta element butunlay oʻchiriladi. Buni bekor qilib boʻlmaydi."
   },
+  "A folder here is already called %1.": "Bu yerda allaqachon %1 nomli papka mavjud.",
   "A folder, or a server's address like sftp://host/": "Papka yoki sftp://host/ kabi server manzili",
   "A name can't contain \"/\".": "Nomda \"/\" belgisi boʻlishi mumkin emas.",
   "Add or remove one from the selection": "Bittasini tanlovga qoʻshish yoki undan olib tashlash",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Nomini oʻzgartirish / nusxa yaratish",
   "Rename…": "Nomini oʻzgartirish…",
   "Replace": "Almashtirish",
+  "Replace %1?": "%1 almashtirilsinmi?",
+  "Replace %Ln files?": {
+    "one": "%Ln ta fayl almashtirilsinmi?",
+    "other": "%Ln ta fayl almashtirilsinmi?"
+  },
   "Replacing moves the one there now to the trash.": "Almashtirish mavjudini chiqindi qutisiga koʻchiradi.",
   "Restore": "Tiklash",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln ta element tiklanmoqda…"
   },
   "Right-click / Alt+⏎ / Menu": "Oʻng tugmani bosish / Alt+⏎ / Menyu",
+  "Save": "Saqlash",
   "Scroll": "Aylantirish",
   "Search %1": "%1da qidirish",
   "Search %1 and below": "%1 va uning ichidagilarda qidirish",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1da yoyish uchun hech narsa yoʻq.",
   "There's nothing to redo.": "Qayta bajarish uchun hech narsa yoʻq.",
   "There's nothing to undo.": "Bekor qilish uchun hech narsa yoʻq.",
+  "These already exist here: %1": "Bular bu yerda allaqachon mavjud: %1",
   "This computer can't make %1 drives.": "Bu kompyuter %1 disklarni yarata olmaydi.",
   "This folder is empty": "Bu papka boʻsh",
   "This folder no longer exists.": "Bu papka endi mavjud emas.",

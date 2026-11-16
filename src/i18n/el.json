@@ -40,6 +40,7 @@
     "one": "Ένα στοιχείο θα διαγραφεί οριστικά. Αυτό δεν μπορεί να αναιρεθεί.",
     "other": "%Ln στοιχεία θα διαγραφούν οριστικά. Αυτό δεν μπορεί να αναιρεθεί."
   },
+  "A folder here is already called %1.": "Ένας φάκελος εδώ ονομάζεται ήδη %1.",
   "A folder, or a server's address like sftp://host/": "Ένας φάκελος ή μια διεύθυνση διακομιστή, όπως sftp://host/",
   "A name can't contain \"/\".": "Το όνομα δεν μπορεί να περιέχει το «/».",
   "Add or remove one from the selection": "Προσθήκη ή αφαίρεση ενός στοιχείου από την επιλογή",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Μετονομασία / δημιουργία αντιγράφου",
   "Rename…": "Μετονομασία…",
   "Replace": "Αντικατάσταση",
+  "Replace %1?": "Αντικατάσταση του %1;",
+  "Replace %Ln files?": {
+    "one": "Αντικατάσταση ενός αρχείου;",
+    "other": "Αντικατάσταση %Ln αρχείων;"
+  },
   "Replacing moves the one there now to the trash.": "Η αντικατάσταση μετακινεί το υπάρχον στα απορρίμματα.",
   "Restore": "Επαναφορά",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Επαναφορά %Ln στοιχείων…"
   },
   "Right-click / Alt+⏎ / Menu": "Δεξί κλικ / Alt+⏎ / Μενού",
+  "Save": "Αποθήκευση",
   "Scroll": "Κύλιση",
   "Search %1": "Αναζήτηση %1",
   "Search %1 and below": "Αναζήτηση στο %1 και στους υποφακέλους",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Δεν υπάρχει τίποτα στο %1 για εξαγωγή.",
   "There's nothing to redo.": "Δεν υπάρχει τίποτα για επανάληψη.",
   "There's nothing to undo.": "Δεν υπάρχει τίποτα για αναίρεση.",
+  "These already exist here: %1": "Αυτά υπάρχουν ήδη εδώ: %1",
   "This computer can't make %1 drives.": "Αυτός ο υπολογιστής δεν μπορεί να δημιουργήσει μονάδες %1.",
   "This folder is empty": "Αυτός ο φάκελος είναι άδειος",
   "This folder no longer exists.": "Αυτός ο φάκελος δεν υπάρχει πια.",

@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln รายการจะถูกลบถาวร ยกเลิกไม่ได้"
   },
+  "A folder here is already called %1.": "โฟลเดอร์ที่นี่ชื่อ %1 อยู่แล้ว",
   "A folder, or a server's address like sftp://host/": "โฟลเดอร์ หรือที่อยู่เซิร์ฟเวอร์ เช่น sftp://host/",
   "A name can't contain \"/\".": "ชื่อมี \"/\" ไม่ได้",
   "Add or remove one from the selection": "เพิ่มหรือนำรายการหนึ่งออกจากการเลือก",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "เปลี่ยนชื่อ / ทำสำเนา",
   "Rename…": "เปลี่ยนชื่อ…",
   "Replace": "แทนที่",
+  "Replace %1?": "แทนที่ %1?",
+  "Replace %Ln files?": {
+    "other": "แทนที่ %Ln ไฟล์?"
+  },
   "Replacing moves the one there now to the trash.": "การแทนที่จะย้ายไฟล์เดิมไปถังขยะ",
   "Restore": "กู้คืน",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "กำลังกู้คืน %Ln รายการ…"
   },
   "Right-click / Alt+⏎ / Menu": "คลิกขวา / Alt+⏎ / เมนู",
+  "Save": "บันทึก",
   "Scroll": "เลื่อน",
   "Search %1": "ค้นหา %1",
   "Search %1 and below": "ค้นหา %1 และโฟลเดอร์ย่อย",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "ไม่มีอะไรใน %1 ให้แตกไฟล์",
   "There's nothing to redo.": "ไม่มีอะไรให้ทำซ้ำ",
   "There's nothing to undo.": "ไม่มีอะไรให้เลิกทำ",
+  "These already exist here: %1": "รายการเหล่านี้มีอยู่ที่นี่แล้ว: %1",
   "This computer can't make %1 drives.": "คอมพิวเตอร์เครื่องนี้สร้างไดรฟ์ %1 ไม่ได้",
   "This folder is empty": "โฟลเดอร์นี้ว่างเปล่า",
   "This folder no longer exists.": "โฟลเดอร์นี้ไม่มีอยู่แล้ว",

@@ -42,6 +42,7 @@
     "one": "%Ln vienums tiks neatgriezeniski izdzēsts. Šo darbību nevar atsaukt.",
     "other": "%Ln vienumi tiks neatgriezeniski izdzēsti. Šo darbību nevar atsaukt."
   },
+  "A folder here is already called %1.": "Šeit jau ir mape ar nosaukumu %1.",
   "A folder, or a server's address like sftp://host/": "Mape vai servera adrese, piemēram, sftp://host/",
   "A name can't contain \"/\".": "Nosaukumā nevar būt \"/\".",
   "Add or remove one from the selection": "Pievienot atlasei vai noņemt no atlases",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Pārdēvēt / dublēt",
   "Rename…": "Pārdēvēt…",
   "Replace": "Aizstāt",
+  "Replace %1?": "Aizstāt %1?",
+  "Replace %Ln files?": {
+    "zero": "Aizstāt %Ln failus?",
+    "one": "Aizstāt %Ln failu?",
+    "other": "Aizstāt %Ln failus?"
+  },
   "Replacing moves the one there now to the trash.": "Aizstāšana esošo pārvietos uz atkritni.",
   "Restore": "Atjaunot",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Atjauno %Ln vienumus…"
   },
   "Right-click / Alt+⏎ / Menu": "Labais klikšķis / Alt+⏎ / Menu",
+  "Save": "Saglabāt",
   "Scroll": "Ritināt",
   "Search %1": "Meklēt %1",
   "Search %1 and below": "Meklēt %1 un apakšmapēs",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "%1 nav nekā, ko izvilkt.",
   "There's nothing to redo.": "Nav nekā, ko atkārtot.",
   "There's nothing to undo.": "Nav nekā, ko atsaukt.",
+  "These already exist here: %1": "Šie jau ir šeit: %1",
   "This computer can't make %1 drives.": "Šis dators nevar izveidot %1 diskus.",
   "This folder is empty": "Šī mape ir tukša",
   "This folder no longer exists.": "Šī mape vairs nepastāv.",

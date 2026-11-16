@@ -42,6 +42,7 @@
     "many": "%Ln itens serão eliminados definitivamente. Esta ação não pode ser anulada.",
     "other": "%Ln itens serão eliminados definitivamente. Esta ação não pode ser anulada."
   },
+  "A folder here is already called %1.": "Já existe aqui uma pasta chamada %1.",
   "A folder, or a server's address like sftp://host/": "Uma pasta ou o endereço de um servidor, como sftp://host/",
   "A name can't contain \"/\".": "Um nome não pode conter \"/\".",
   "Add or remove one from the selection": "Adicionar ou remover um item da seleção",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Mudar o nome / duplicar",
   "Rename…": "Mudar o nome…",
   "Replace": "Substituir",
+  "Replace %1?": "Substituir %1?",
+  "Replace %Ln files?": {
+    "one": "Substituir %Ln ficheiro?",
+    "many": "Substituir %Ln ficheiros?",
+    "other": "Substituir %Ln ficheiros?"
+  },
   "Replacing moves the one there now to the trash.": "Ao substituir, o item existente é movido para o lixo.",
   "Restore": "Restaurar",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "A restaurar %Ln itens…"
   },
   "Right-click / Alt+⏎ / Menu": "Botão direito / Alt+⏎ / Menu",
+  "Save": "Guardar",
   "Scroll": "Deslocar",
   "Search %1": "Pesquisar em %1",
   "Search %1 and below": "Pesquisar em %1 e subpastas",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "Não há nada em %1 para extrair.",
   "There's nothing to redo.": "Não há nada para refazer.",
   "There's nothing to undo.": "Não há nada para anular.",
+  "These already exist here: %1": "Estes já existem aqui: %1",
   "This computer can't make %1 drives.": "Este computador não consegue criar unidades %1.",
   "This folder is empty": "Esta pasta está vazia",
   "This folder no longer exists.": "Esta pasta já não existe.",

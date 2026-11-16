@@ -40,6 +40,7 @@
     "one": "%Lnটি আইটেম স্থায়ীভাবে মুছে যাবে। এটি ফেরানো যাবে না।",
     "other": "%Lnটি আইটেম স্থায়ীভাবে মুছে যাবে। এটি ফেরানো যাবে না।"
   },
+  "A folder here is already called %1.": "এখানে ইতিমধ্যেই %1 নামে একটি ফোল্ডার আছে।",
   "A folder, or a server's address like sftp://host/": "একটি ফোল্ডার, অথবা সার্ভারের ঠিকানা, যেমন sftp://host/",
   "A name can't contain \"/\".": "নামে \"/\" থাকা যাবে না।",
   "Add or remove one from the selection": "নির্বাচনে একটি যোগ করুন বা বাদ দিন",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "নাম পরিবর্তন করুন / অনুলিপি তৈরি করুন",
   "Rename…": "নাম পরিবর্তন করুন…",
   "Replace": "প্রতিস্থাপন করুন",
+  "Replace %1?": "%1 প্রতিস্থাপন করবেন?",
+  "Replace %Ln files?": {
+    "one": "%Lnটি ফাইল প্রতিস্থাপন করবেন?",
+    "other": "%Lnটি ফাইল প্রতিস্থাপন করবেন?"
+  },
   "Replacing moves the one there now to the trash.": "প্রতিস্থাপন করলে সেখানে থাকা বর্তমানটি ট্র্যাশে সরানো হবে।",
   "Restore": "পুনরুদ্ধার করুন",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Lnটি আইটেম পুনরুদ্ধার করা হচ্ছে…"
   },
   "Right-click / Alt+⏎ / Menu": "ডান-ক্লিক / Alt+⏎ / মেনু",
+  "Save": "সংরক্ষণ করুন",
   "Scroll": "স্ক্রল করুন",
   "Search %1": "%1-এ খুঁজুন",
   "Search %1 and below": "%1 ও তার নিচে খুঁজুন",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1-এ এক্সট্র্যাক্ট করার মতো কিছু নেই।",
   "There's nothing to redo.": "আবার করার মতো কিছু নেই।",
   "There's nothing to undo.": "পূর্বাবস্থায় ফেরানোর মতো কিছু নেই।",
+  "These already exist here: %1": "এগুলো ইতিমধ্যেই এখানে আছে: %1",
   "This computer can't make %1 drives.": "এই কম্পিউটার %1 ড্রাইভ তৈরি করতে পারে না।",
   "This folder is empty": "এই ফোল্ডারটি খালি",
   "This folder no longer exists.": "এই ফোল্ডারটি আর নেই।",

@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln 個項目將永久刪除。此操作無法復原。"
   },
+  "A folder here is already called %1.": "此處已有名為 %1 的資料夾。",
   "A folder, or a server's address like sftp://host/": "資料夾，或伺服器位址，例如 sftp://host/",
   "A name can't contain \"/\".": "名稱不可包含 \"/\"。",
   "Add or remove one from the selection": "加入或取消選取單一項目",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "重新命名 / 複製",
   "Rename…": "重新命名…",
   "Replace": "取代",
+  "Replace %1?": "取代 %1？",
+  "Replace %Ln files?": {
+    "other": "取代 %Ln 個檔案？"
+  },
   "Replacing moves the one there now to the trash.": "取代會將現有的項目移至垃圾桶。",
   "Restore": "還原",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "正在還原 %Ln 個項目…"
   },
   "Right-click / Alt+⏎ / Menu": "按右鍵 / Alt+⏎ / Menu",
+  "Save": "儲存",
   "Scroll": "捲動",
   "Search %1": "搜尋 %1",
   "Search %1 and below": "搜尋 %1 及其子資料夾",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "%1 裡沒有任何可解壓縮的內容。",
   "There's nothing to redo.": "沒有可重做的操作。",
   "There's nothing to undo.": "沒有可復原的操作。",
+  "These already exist here: %1": "這些已存在於此處：%1",
   "This computer can't make %1 drives.": "這台電腦無法建立 %1 磁碟機。",
   "This folder is empty": "此資料夾是空的",
   "This folder no longer exists.": "此資料夾已不存在。",

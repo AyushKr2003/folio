@@ -21,9 +21,10 @@ class Windows : public QObject {
 public:
     explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr);
 
-    // Opens a window on a folder, or on a file's folder with it selected.
-    // Null if the interface failed to load (the errors are on stderr).
-    Backend *open(const QString &folder, const QString &select = {});
+    // Opens a window on a folder, or on a file's folder with it selected;
+    // with a `chooser`, a file chooser's window, answering it. Null if the
+    // interface failed to load (the errors are on stderr).
+    Backend *open(const QString &folder, const QString &select = {}, QObject *chooser = nullptr);
 
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
@@ -47,7 +48,7 @@ private:
         Pane main;
         Pane split;
     };
-    Pane makePane(QQmlComponent &component, QQmlContext *parent);
+    Pane makePane(QQmlComponent &component, QQmlContext *parent, QObject *chooser = nullptr);
     Window *find(QObject *window);
     static void release(Pane &pane);
     void close(QObject *window);

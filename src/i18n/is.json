@@ -40,6 +40,7 @@
     "one": "%Ln atriði verður eytt varanlega. Ekki er hægt að afturkalla þetta.",
     "other": "%Ln atriði verða eytt varanlega. Ekki er hægt að afturkalla þetta."
   },
+  "A folder here is already called %1.": "Mappa hér heitir þegar %1.",
   "A folder, or a server's address like sftp://host/": "Mappa eða vistfang þjóns eins og sftp://host/",
   "A name can't contain \"/\".": "Heiti má ekki innihalda \"/\".",
   "Add or remove one from the selection": "Bæta einum við eða fjarlægja einn úr valinu",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Endurnefna / tvírita",
   "Rename…": "Endurnefna…",
   "Replace": "Skipta út",
+  "Replace %1?": "Skipta út %1?",
+  "Replace %Ln files?": {
+    "one": "Skipta út %Ln skrá?",
+    "other": "Skipta út %Ln skrám?"
+  },
   "Replacing moves the one there now to the trash.": "Að skipta út færir það sem er þar núna í ruslið.",
   "Restore": "Endurheimta",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Endurheimtir %Ln atriði…"
   },
   "Right-click / Alt+⏎ / Menu": "Hægrismellur / Alt+⏎ / Menu",
+  "Save": "Vista",
   "Scroll": "Skruna",
   "Search %1": "Leita í %1",
   "Search %1 and below": "Leita í %1 og undirmöppum",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Ekkert er í %1 til að afþjappa.",
   "There's nothing to redo.": "Ekkert er til að endurgera.",
   "There's nothing to undo.": "Ekkert er til að afturkalla.",
+  "These already exist here: %1": "Þessi eru þegar til hér: %1",
   "This computer can't make %1 drives.": "Þessi tölva getur ekki búið til %1 drif.",
   "This folder is empty": "Þessi mappa er tóm",
   "This folder no longer exists.": "Þessi mappa er ekki lengur til.",

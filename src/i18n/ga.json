@@ -46,6 +46,7 @@
     "many": "%Ln mír a scriosfar go buan. Ní féidir é seo a chealú.",
     "other": "%Ln míreanna a scriosfar go buan. Ní féidir é seo a chealú."
   },
+  "A folder here is already called %1.": "Tá fillteán darb ainm %1 anseo cheana.",
   "A folder, or a server's address like sftp://host/": "Fillteán, nó seoladh freastalaí ar nós sftp://host/",
   "A name can't contain \"/\".": "Ní féidir \"/\" a bheith in ainm.",
   "Add or remove one from the selection": "Cuir ceann leis an rogha nó bain ceann de",
@@ -392,6 +393,14 @@
   "Rename / duplicate": "Athainmnigh / dúbláil",
   "Rename…": "Athainmnigh…",
   "Replace": "Ionadaigh",
+  "Replace %1?": "Ionadaigh %1?",
+  "Replace %Ln files?": {
+    "one": "Ionadaigh %Ln comhad?",
+    "two": "Ionadaigh %Ln chomhad?",
+    "few": "Ionadaigh %Ln chomhad?",
+    "many": "Ionadaigh %Ln gcomhad?",
+    "other": "Ionadaigh %Ln comhaid?"
+  },
   "Replacing moves the one there now to the trash.": "Bogann ionadú an ceann atá ann anois chuig an mBruscar.",
   "Restore": "Cuir ar ais",
   "Restore %Ln Items": {
@@ -426,6 +435,7 @@
     "other": "Ag cur %Ln míreanna ar ais…"
   },
   "Right-click / Alt+⏎ / Menu": "Deaschliceáil / Alt+⏎ / Menu",
+  "Save": "Sábháil",
   "Scroll": "Scrollaigh",
   "Search %1": "Cuardaigh %1",
   "Search %1 and below": "Cuardaigh %1 agus a fhofhillteáin",
@@ -477,6 +487,7 @@
   "There's nothing in %1 to extract.": "Níl aon rud i %1 le baint amach.",
   "There's nothing to redo.": "Níl aon rud le hathdhéanamh.",
   "There's nothing to undo.": "Níl aon rud le cealú.",
+  "These already exist here: %1": "Tá siad seo ann anseo cheana: %1",
   "This computer can't make %1 drives.": "Ní féidir leis an ríomhaire seo tiomántáin %1 a dhéanamh.",
   "This folder is empty": "Tá an fillteán seo folamh",
   "This folder no longer exists.": "Níl an fillteán seo ann a thuilleadh.",

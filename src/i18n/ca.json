@@ -42,6 +42,7 @@
     "many": "%Ln elements s'eliminaran definitivament. Aquesta acció no es pot desfer.",
     "other": "%Ln elements s'eliminaran definitivament. Aquesta acció no es pot desfer."
   },
+  "A folder here is already called %1.": "Aquí ja hi ha una carpeta anomenada %1.",
   "A folder, or a server's address like sftp://host/": "Una carpeta o l'adreça d'un servidor, com ara sftp://host/",
   "A name can't contain \"/\".": "Un nom no pot contenir \"/\".",
   "Add or remove one from the selection": "Afegeix o treu un element de la selecció",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Reanomena / duplica",
   "Rename…": "Reanomena…",
   "Replace": "Substitueix",
+  "Replace %1?": "Reemplaça %1?",
+  "Replace %Ln files?": {
+    "one": "Reemplaça un fitxer?",
+    "many": "Reemplaça %Ln fitxers?",
+    "other": "Reemplaça %Ln fitxers?"
+  },
   "Replacing moves the one there now to the trash.": "La substitució mou l'element actual a la paperera.",
   "Restore": "Restaura",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "S'està restaurant %Ln elements…"
   },
   "Right-click / Alt+⏎ / Menu": "Clic dret / Alt+⏎ / Menú",
+  "Save": "Desa",
   "Scroll": "Desplaça",
   "Search %1": "Cerca %1",
   "Search %1 and below": "Cerca a %1 i a les subcarpetes",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "A %1 no hi ha res per extreure.",
   "There's nothing to redo.": "No hi ha res per refer.",
   "There's nothing to undo.": "No hi ha res per desfer.",
+  "These already exist here: %1": "Aquests ja existeixen aquí: %1",
   "This computer can't make %1 drives.": "Aquest ordinador no pot crear unitats %1.",
   "This folder is empty": "Aquesta carpeta està buida",
   "This folder no longer exists.": "Aquesta carpeta ja no existeix.",

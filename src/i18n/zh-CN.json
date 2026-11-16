@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln 个项目将被永久删除。此操作无法撤销。"
   },
+  "A folder here is already called %1.": "此处已有一个名为 %1 的文件夹。",
   "A folder, or a server's address like sftp://host/": "文件夹，或 sftp://host/ 之类的服务器地址",
   "A name can't contain \"/\".": "名称不能包含“/”。",
   "Add or remove one from the selection": "在选择中添加或移除一项",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "重命名 / 创建副本",
   "Rename…": "重命名…",
   "Replace": "替换",
+  "Replace %1?": "替换 %1？",
+  "Replace %Ln files?": {
+    "other": "替换 %Ln 个文件？"
+  },
   "Replacing moves the one there now to the trash.": "替换将把现有文件移到回收站。",
   "Restore": "还原",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "正在还原 %Ln 个项目…"
   },
   "Right-click / Alt+⏎ / Menu": "右键单击 / Alt+⏎ / 菜单键",
+  "Save": "保存",
   "Scroll": "滚动",
   "Search %1": "搜索 %1",
   "Search %1 and below": "搜索 %1 及其子文件夹",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "%1 中没有可解压的内容。",
   "There's nothing to redo.": "没有可重做的操作。",
   "There's nothing to undo.": "没有可撤销的操作。",
+  "These already exist here: %1": "以下项目已存在于此处：%1",
   "This computer can't make %1 drives.": "这台计算机无法创建 %1 驱动器。",
   "This folder is empty": "此文件夹为空",
   "This folder no longer exists.": "此文件夹已不存在。",

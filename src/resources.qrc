@@ -27,6 +27,7 @@
         <file>FolioDialog.qml</file>
         <file>ClashDialog.qml</file>
         <file>ConfirmDialog.qml</file>
+        <file>ChooserBar.qml</file>
         <file>FormatDialog.qml</file>
         <file>DriveMenu.qml</file>
         <file>RenameDialog.qml</file>

@@ -40,6 +40,7 @@
     "one": "%Ln елемент ще се изтрие окончателно. Това не може да се отмени.",
     "other": "%Ln елемента ще се изтрият окончателно. Това не може да се отмени."
   },
+  "A folder here is already called %1.": "Тук вече има папка с име %1.",
   "A folder, or a server's address like sftp://host/": "Папка или адрес на сървър, като sftp://host/",
   "A name can't contain \"/\".": "Името не може да съдържа \"/\".",
   "Add or remove one from the selection": "Добавяне или премахване на елемент от избора",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Преименувай / дублирай",
   "Rename…": "Преименувай…",
   "Replace": "Замени",
+  "Replace %1?": "Да се замени ли %1?",
+  "Replace %Ln files?": {
+    "one": "Да се замени ли %Ln файл?",
+    "other": "Да се заменят ли %Ln файла?"
+  },
   "Replacing moves the one there now to the trash.": "При замяна съществуващият се премества в кошчето.",
   "Restore": "Възстанови",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Възстановяване на %Ln елемента…"
   },
   "Right-click / Alt+⏎ / Menu": "Щракни с десен бутон / Alt+⏎ / Меню",
+  "Save": "Запази",
   "Scroll": "Превъртане",
   "Search %1": "Търсене в %1",
   "Search %1 and below": "Търсене в %1 и подпапките",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "В %1 няма нищо за извличане.",
   "There's nothing to redo.": "Няма нищо за повтаряне.",
   "There's nothing to undo.": "Няма нищо за отмяна.",
+  "These already exist here: %1": "Тези вече съществуват тук: %1",
   "This computer can't make %1 drives.": "Този компютър не може да създава %1 устройства.",
   "This folder is empty": "Тази папка е празна",
   "This folder no longer exists.": "Тази папка вече не съществува.",

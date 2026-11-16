@@ -40,6 +40,7 @@
     "one": "%Ln مورد برای همیشه حذف می‌شود. این کار قابل بازگشت نیست.",
     "other": "%Ln مورد برای همیشه حذف می‌شود. این کار قابل بازگشت نیست."
   },
+  "A folder here is already called %1.": "پوشه‌ای در اینجا از قبل “%1” نام دارد.",
   "A folder, or a server's address like sftp://host/": "یک پوشه یا نشانی سرور، مانند sftp://host/",
   "A name can't contain \"/\".": "نام نمی‌تواند شامل «/» باشد.",
   "Add or remove one from the selection": "افزودن یا حذف یک مورد از انتخاب",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "تغییر نام / تکثیر",
   "Rename…": "تغییر نام…",
   "Replace": "جایگزین کردن",
+  "Replace %1?": "“%1” جایگزین شود؟",
+  "Replace %Ln files?": {
+    "one": "%Ln پرونده جایگزین شود؟",
+    "other": "%Ln پرونده جایگزین شود؟"
+  },
   "Replacing moves the one there now to the trash.": "جایگزینی مورد موجود را به زباله‌دان منتقل می‌کند.",
   "Restore": "بازگردانی",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "در حال بازگردانی %Ln مورد…"
   },
   "Right-click / Alt+⏎ / Menu": "راست‌کلیک / Alt+⏎ / منو",
+  "Save": "ذخیره",
   "Scroll": "پیمایش",
   "Search %1": "جستجو در %1",
   "Search %1 and below": "جستجو در %1 و زیرپوشه‌ها",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "در %1 چیزی برای استخراج نیست.",
   "There's nothing to redo.": "چیزی برای بازانجام نیست.",
   "There's nothing to undo.": "چیزی برای واگردانی نیست.",
+  "These already exist here: %1": "این‌ها از قبل در اینجا وجود دارند: %1",
   "This computer can't make %1 drives.": "این رایانه نمی‌تواند درایوهای %1 بسازد.",
   "This folder is empty": "این پوشه خالی است",
   "This folder no longer exists.": "این پوشه دیگر وجود ندارد.",

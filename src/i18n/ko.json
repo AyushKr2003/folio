@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln개 항목이 영구히 삭제됩니다. 되돌릴 수 없습니다."
   },
+  "A folder here is already called %1.": "여기에 이미 %1 이름의 폴더가 있습니다.",
   "A folder, or a server's address like sftp://host/": "폴더 또는 sftp://host/ 같은 서버 주소",
   "A name can't contain \"/\".": "이름에 \"/\"를 포함할 수 없습니다.",
   "Add or remove one from the selection": "선택 항목에 추가/제거",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "이름 바꾸기 / 복제",
   "Rename…": "이름 바꾸기…",
   "Replace": "바꾸기",
+  "Replace %1?": "%1을(를) 교체할까요?",
+  "Replace %Ln files?": {
+    "other": "%Ln개 파일을 교체할까요?"
+  },
   "Replacing moves the one there now to the trash.": "바꾸면 현재 있는 항목이 휴지통으로 이동합니다.",
   "Restore": "복원",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "%Ln개 항목 복원 중…"
   },
   "Right-click / Alt+⏎ / Menu": "오른쪽 클릭 / Alt+⏎ / 메뉴",
+  "Save": "저장",
   "Scroll": "스크롤",
   "Search %1": "%1에서 검색",
   "Search %1 and below": "%1 및 하위 폴더에서 검색",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "%1에는 압축을 풀 내용이 없습니다.",
   "There's nothing to redo.": "다시 실행할 항목이 없습니다.",
   "There's nothing to undo.": "실행 취소할 항목이 없습니다.",
+  "These already exist here: %1": "다음 항목이 이미 여기에 있습니다: %1",
   "This computer can't make %1 drives.": "이 컴퓨터에서는 %1 드라이브를 만들 수 없습니다.",
   "This folder is empty": "폴더가 비어 있습니다",
   "This folder no longer exists.": "이 폴더가 더 이상 존재하지 않습니다.",

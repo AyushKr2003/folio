@@ -497,6 +497,8 @@ Rectangle {
     // the key that shows them.
     AbstractButton {
         id: help
+        // A file chooser is a dialog, not the place to learn Files' keys.
+        visible: !chooser
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.leftMargin: 18

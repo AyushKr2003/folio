@@ -42,6 +42,7 @@
     "many": "%Ln elementos se eliminarán permanentemente. Esto no se puede deshacer.",
     "other": "%Ln elementos se eliminarán permanentemente. Esto no se puede deshacer."
   },
+  "A folder here is already called %1.": "Ya hay una carpeta aquí llamada %1.",
   "A folder, or a server's address like sftp://host/": "Una carpeta, o la dirección de un servidor como sftp://host/",
   "A name can't contain \"/\".": "Un nombre no puede contener \"/\".",
   "Add or remove one from the selection": "Agregar o quitar uno de la selección",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Cambiar nombre / duplicar",
   "Rename…": "Cambiar nombre…",
   "Replace": "Reemplazar",
+  "Replace %1?": "¿Reemplazar %1?",
+  "Replace %Ln files?": {
+    "one": "¿Reemplazar %Ln archivo?",
+    "many": "¿Reemplazar %Ln archivos?",
+    "other": "¿Reemplazar %Ln archivos?"
+  },
   "Replacing moves the one there now to the trash.": "Al reemplazar, el elemento actual se mueve a la papelera.",
   "Restore": "Restaurar",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Restaurando %Ln elementos…"
   },
   "Right-click / Alt+⏎ / Menu": "Clic derecho / Alt+⏎ / Menú",
+  "Save": "Guardar",
   "Scroll": "Desplazar",
   "Search %1": "Buscar en %1",
   "Search %1 and below": "Buscar en %1 y sus subcarpetas",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "No hay nada en %1 para extraer.",
   "There's nothing to redo.": "No hay nada que rehacer.",
   "There's nothing to undo.": "No hay nada que deshacer.",
+  "These already exist here: %1": "Ya existen aquí: %1",
   "This computer can't make %1 drives.": "Esta computadora no puede crear unidades %1.",
   "This folder is empty": "Esta carpeta está vacía",
   "This folder no longer exists.": "Esta carpeta ya no existe.",

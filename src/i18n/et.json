@@ -40,6 +40,7 @@
     "one": "%Ln üksus kustutatakse jäädavalt. Seda ei saa tagasi võtta.",
     "other": "%Ln üksust kustutatakse jäädavalt. Seda ei saa tagasi võtta."
   },
+  "A folder here is already called %1.": "Siin on juba kaust nimega %1.",
   "A folder, or a server's address like sftp://host/": "Kaust või serveri aadress, nt sftp://host/",
   "A name can't contain \"/\".": "Nimi ei saa sisaldada „/“.",
   "Add or remove one from the selection": "Lisa valikusse või eemalda valikust",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Nimeta ümber / dubleeri",
   "Rename…": "Nimeta ümber…",
   "Replace": "Asenda",
+  "Replace %1?": "Asenda %1?",
+  "Replace %Ln files?": {
+    "one": "Asenda %Ln fail?",
+    "other": "Asenda %Ln faili?"
+  },
   "Replacing moves the one there now to the trash.": "Asendamine teisaldab olemasoleva prügikasti.",
   "Restore": "Taasta",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln üksuste taastamine…"
   },
   "Right-click / Alt+⏎ / Menu": "Paremklõps / Alt+⏎ / Menüü",
+  "Save": "Salvesta",
   "Scroll": "Keri",
   "Search %1": "Otsi kaustast %1",
   "Search %1 and below": "Otsi kaustast %1 ja alamkaustadest",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1-s ei ole midagi lahti pakkida.",
   "There's nothing to redo.": "Pole midagi uuesti teha.",
   "There's nothing to undo.": "Pole midagi tagasi võtta.",
+  "These already exist here: %1": "Need on siin juba olemas: %1",
   "This computer can't make %1 drives.": "See arvuti ei saa %1 kettaid luua.",
   "This folder is empty": "See kaust on tühi",
   "This folder no longer exists.": "Seda kausta enam ei ole.",

@@ -4,6 +4,7 @@
 
 #include <QClipboard>
 #include <QDir>
+#include <QEventLoopLocker>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
@@ -793,7 +794,10 @@ bool FileOps::inBackground(const std::function<QString(const Job &)> &label, Wor
     auto *timer = new QTimer(watcher);
     connect(timer, &QTimer::timeout, this, [this, job, label] { setBusy(label(*job)); });
     timer->start(200);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, timer, job, done = std::move(done)] {
+    // Closing the last window doesn't quit Folio under the work: it runs on
+    // until `done` has finished it, and whatever `done` starts holds on too.
+    auto running = std::make_shared<QEventLoopLocker>();
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, timer, job, running, done = std::move(done)] {
         timer->stop();
         watcher->deleteLater();
         m_job.reset();
@@ -2056,7 +2060,9 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
     m_killed = false;
     claim(Lane::Files);
     setBusy(busy);
-    connect(process, &QProcess::finished, this, [this, process, finished, stopped](int code, QProcess::ExitStatus status) {
+    // As for work in the background, closing the last window waits for it.
+    auto running = std::make_shared<QEventLoopLocker>();
+    connect(process, &QProcess::finished, this, [this, process, finished, stopped, running](int code, QProcess::ExitStatus status) {
         process->deleteLater();
         m_process = nullptr;
         release();
@@ -2068,7 +2074,7 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
     });
     // A program that isn't installed never finishes, so this is the only
     // word from it.
-    connect(process, &QProcess::errorOccurred, this, [this, process, missing](QProcess::ProcessError error) {
+    connect(process, &QProcess::errorOccurred, this, [this, process, missing, running](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)
             return;
         process->deleteLater();

@@ -51,7 +51,8 @@ static QCache<QString, QVector<FolderModel::Entry>> &recentListings() {
 
 // The language is part of it: names sort by its alphabet.
 QString FolderModel::cacheKey() const {
-    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name();
+    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name() + '\n'
+           + m_filter.join('\n');
 }
 
 void FolderModel::remember() {
@@ -162,6 +163,14 @@ void FolderModel::setItems(const QVariantList &items) {
         reload();
 }
 
+void FolderModel::setFilter(const QStringList &filter) {
+    if (filter == m_filter)
+        return;
+    m_filter = filter;
+    emit filterChanged();
+    reload();
+}
+
 void FolderModel::setPath(const QString &path) {
     const QString clean = path.isEmpty() || isView(path) ? path : QDir::cleanPath(path);
     if (clean == m_path)
@@ -204,6 +213,33 @@ void FolderModel::setPath(const QString &path) {
     if (!isPluginView(m_path))
         m_watcher.addPath(m_path == recentPath() ? recentFile() : m_path);
     reload();
+}
+
+bool FolderModel::fits(const QStringList &filter, const Entry &entry) {
+    if (filter.isEmpty() || entry.isDir)
+        return true;
+    // From the path: in search results the name is the path from where the
+    // search started.
+    const QString name = entry.path.section('/', -1);
+    const QMimeType type = QMimeDatabase().mimeTypeForName(entry.mime);
+    for (const QString &pattern : filter) {
+        if (!pattern.contains('/')) {
+            if (QDir::match(QStringList{pattern}, name))
+                return true;
+        } else if (pattern == "*/*") {
+            return true;
+        } else if (pattern.endsWith("/*")) {
+            const QString group = pattern.chopped(1);
+            if (entry.mime.startsWith(group))
+                return true;
+            for (const QString &parent : type.allAncestors())
+                if (parent.startsWith(group))
+                    return true;
+        } else if (type.inherits(pattern)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 QString FolderModel::kindForMime(const QString &mime) {
@@ -282,7 +318,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
-                                                int limit, const QLocale &locale) {
+                                                int limit, const QLocale &locale, const QStringList &filter) {
     QVector<Entry> entries;
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
@@ -305,7 +341,9 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
-                entries.push_back(e);
+                // Only what fits a file chooser's filter uses up the limit.
+                if (fits(filter, e))
+                    entries.push_back(e);
             }
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
@@ -450,6 +488,7 @@ void FolderModel::reload() {
     const QString query = m_query;
     const QLocale locale;
     const QVariantList items = m_items;
+    const QStringList filter = m_filter;
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -481,12 +520,14 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, filter, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
         auto entries = isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
-                     : search(path, query, showHidden, sort, overtaken, 1000, locale);
+                     : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
+        if (!isPluginView(path))
+            entries.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
         return qMakePair(entries, error);
     }));
 }

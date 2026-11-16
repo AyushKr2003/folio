@@ -42,6 +42,7 @@
     "few": "%Ln ставке ће бити трајно обрисане. Ово се не може поништити.",
     "other": "%Ln ставки ће бити трајно обрисано. Ово се не може поништити."
   },
+  "A folder here is already called %1.": "Овде већ постоји фасцикла под називом %1.",
   "A folder, or a server's address like sftp://host/": "Фасцикла или адреса сервера, као sftp://host/",
   "A name can't contain \"/\".": "Назив не може да садржи „/“.",
   "Add or remove one from the selection": "Додај или уклони ставку из избора",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Преименуј / дуплирај",
   "Rename…": "Преименуј…",
   "Replace": "Замени",
+  "Replace %1?": "Замени %1?",
+  "Replace %Ln files?": {
+    "one": "Замени %Ln датотеку?",
+    "few": "Замени %Ln датотеке?",
+    "other": "Замени %Ln датотека?"
+  },
   "Replacing moves the one there now to the trash.": "Замена премешта постојећу у смеће.",
   "Restore": "Врати",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Враћање %Ln ставки…"
   },
   "Right-click / Alt+⏎ / Menu": "Десни клик / Alt+⏎ / Мени",
+  "Save": "Сачувај",
   "Scroll": "Клизање",
   "Search %1": "Претражи %1",
   "Search %1 and below": "Претражи %1 и подфасцикле",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "У %1 нема ничега за издвајање.",
   "There's nothing to redo.": "Нема ничега за понављање.",
   "There's nothing to undo.": "Нема ничега за опозивање.",
+  "These already exist here: %1": "Ове ставке већ постоје овде: %1",
   "This computer can't make %1 drives.": "Овај рачунар не може да прави %1 дискове.",
   "This folder is empty": "Ова фасцикла је празна",
   "This folder no longer exists.": "Ова фасцикла више не постоји.",

@@ -40,6 +40,7 @@
     "one": "%Ln öge kalıcı olarak silinecek. Bu geri alınamaz.",
     "other": "%Ln öge kalıcı olarak silinecek. Bu geri alınamaz."
   },
+  "A folder here is already called %1.": "Burada zaten %1 adında bir klasör var.",
   "A folder, or a server's address like sftp://host/": "Bir klasör veya sftp://host/ gibi bir sunucu adresi",
   "A name can't contain \"/\".": "Ad \"/\" içeremez.",
   "Add or remove one from the selection": "Seçime bir öge ekle veya seçimden kaldır",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Yeniden adlandır / çoğalt",
   "Rename…": "Yeniden Adlandır…",
   "Replace": "Değiştir",
+  "Replace %1?": "%1 değiştirilsin mi?",
+  "Replace %Ln files?": {
+    "one": "%Ln dosya değiştirilsin mi?",
+    "other": "%Ln dosya değiştirilsin mi?"
+  },
   "Replacing moves the one there now to the trash.": "Değiştirirseniz oradaki öge çöpe taşınır.",
   "Restore": "Geri Yükle",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln öge geri yükleniyor…"
   },
   "Right-click / Alt+⏎ / Menu": "Sağ tık / Alt+⏎ / Menü",
+  "Save": "Kaydet",
   "Scroll": "Kaydır",
   "Search %1": "%1 içinde ara",
   "Search %1 and below": "%1 ve alt klasörlerinde ara",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "%1 içinde çıkarılacak hiçbir şey yok.",
   "There's nothing to redo.": "Yinelenecek bir şey yok.",
   "There's nothing to undo.": "Geri alınacak bir şey yok.",
+  "These already exist here: %1": "Bunlar burada zaten var: %1",
   "This computer can't make %1 drives.": "Bu bilgisayar %1 sürücüleri oluşturamaz.",
   "This folder is empty": "Bu klasör boş",
   "This folder no longer exists.": "Bu klasör artık yok.",

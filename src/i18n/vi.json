@@ -38,6 +38,7 @@
   "%Ln items will be deleted permanently. This can't be undone.": {
     "other": "%Ln mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác thao tác này."
   },
+  "A folder here is already called %1.": "Ở đây đã có thư mục tên %1.",
   "A folder, or a server's address like sftp://host/": "Một thư mục hoặc địa chỉ máy chủ như sftp://host/",
   "A name can't contain \"/\".": "Tên không được chứa \"/\".",
   "Add or remove one from the selection": "Thêm hoặc bỏ một mục khỏi phần đã chọn",
@@ -296,6 +297,10 @@
   "Rename / duplicate": "Đổi tên / nhân bản",
   "Rename…": "Đổi tên…",
   "Replace": "Thay thế",
+  "Replace %1?": "Thay thế %1?",
+  "Replace %Ln files?": {
+    "other": "Thay thế %Ln tệp?"
+  },
   "Replacing moves the one there now to the trash.": "Thay thế sẽ chuyển mục hiện có vào thùng rác.",
   "Restore": "Khôi phục",
   "Restore %Ln Items": {
@@ -314,6 +319,7 @@
     "other": "Đang khôi phục %Ln mục…"
   },
   "Right-click / Alt+⏎ / Menu": "Chuột phải / Alt+⏎ / Menu",
+  "Save": "Lưu",
   "Scroll": "Cuộn",
   "Search %1": "Tìm trong %1",
   "Search %1 and below": "Tìm trong %1 và bên dưới",
@@ -361,6 +367,7 @@
   "There's nothing in %1 to extract.": "Không có gì trong %1 để giải nén.",
   "There's nothing to redo.": "Không có gì để làm lại.",
   "There's nothing to undo.": "Không có gì để hoàn tác.",
+  "These already exist here: %1": "Những mục này đã tồn tại ở đây: %1",
   "This computer can't make %1 drives.": "Máy tính này không thể tạo ổ đĩa %1.",
   "This folder is empty": "Thư mục này trống",
   "This folder no longer exists.": "Thư mục này không còn tồn tại.",

@@ -10,8 +10,9 @@ import QtCore
 // the sidebar and the details follow the pane used last.
 ApplicationWindow {
     id: win
-    width: 1280
-    height: 800
+    // A file chooser's window is a dialog, the size of GTK's.
+    width: chooser ? 875 : 1280
+    height: chooser ? 600 : 800
     minimumWidth: 720
     minimumHeight: 460
     visible: true
@@ -19,6 +20,8 @@ ApplicationWindow {
     // retranslating QML doesn't redo, so the language is read here too.
     title: {
         translator.language
+        if (chooser && chooser.title.length > 0)
+            return chooser.title
         return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
     }
     color: theme.background
@@ -65,7 +68,7 @@ ApplicationWindow {
     readonly property bool split: rightPane !== null
     // Whether keys are going into a text field. The right pane can go before
     // the window does when it closes, leaving activePane null.
-    readonly property bool typing: !!activePane && activePane.typing
+    readonly property bool typing: (!!activePane && activePane.typing) || (!!chooserBar.item && chooserBar.item.typing)
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
     // Whether the window is wide enough for the details column at all.
@@ -119,13 +122,17 @@ ApplicationWindow {
     Shortcut { sequence: "Tab"; enabled: !win.typing; onActivated: win.moveKeyboard(1) }
     Shortcut { sequence: "Shift+Backtab"; enabled: !win.typing; onActivated: win.moveKeyboard(-1) }
     function moveKeyboard(step) {
-        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [])
-        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : activePane
+        // A file chooser's bar is the last stop: its name, or its answer.
+        const bar = chooserBar.item
+        const stops = [sidebar, leftPane].concat(split ? [rightPane] : [], details.takesKeyboard ? [details] : [], bar ? [bar] : [])
+        const here = sidebar.activeFocus ? sidebar : details.hasKeyboard ? details : bar && bar.hasKeyboard ? bar : activePane
         const next = stops[(stops.indexOf(here) + step + stops.length) % stops.length]
         if (next === sidebar)
             sidebar.focusSidebar()
         else if (next === details)
             details.focusKeyboard()
+        else if (next === bar)
+            bar.focusKeyboard()
         else
             next.focusView()
     }
@@ -135,6 +142,9 @@ ApplicationWindow {
         enabled: win.settled
         opacity: win.settled ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 100 } }
+        // A file chooser cancels on Escape that nothing inside wanted.
+        Keys.enabled: !!chooser
+        Keys.onEscapePressed: chooser.cancel()
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60
@@ -147,6 +157,7 @@ ApplicationWindow {
 
         RowLayout {
             anchors.fill: parent
+            anchors.bottomMargin: chooserBar.item ? chooserBar.item.barHeight : 0
             spacing: 0
 
             Sidebar {
@@ -190,6 +201,13 @@ ApplicationWindow {
                 folderPane: win.activePane
                 onFinished: win.activePane.focusView()
             }
+        }
+
+        Loader {
+            id: chooserBar
+            anchors.fill: parent
+            active: !!chooser
+            sourceComponent: ChooserBar { pane: win.activePane }
         }
 
         HelpOverlay {

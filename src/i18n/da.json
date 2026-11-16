@@ -40,6 +40,7 @@
     "one": "%Ln element slettes permanent. Dette kan ikke fortrydes.",
     "other": "%Ln elementer slettes permanent. Dette kan ikke fortrydes."
   },
+  "A folder here is already called %1.": "En mappe her hedder allerede %1.",
   "A folder, or a server's address like sftp://host/": "En mappe eller en serveradresse som sftp://host/",
   "A name can't contain \"/\".": "Et navn kan ikke indeholde \"/\".",
   "Add or remove one from the selection": "Tilføj eller fjern ét fra markeringen",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Omdøb / dupliker",
   "Rename…": "Omdøb…",
   "Replace": "Erstat",
+  "Replace %1?": "Erstat %1?",
+  "Replace %Ln files?": {
+    "one": "Erstat %Ln fil?",
+    "other": "Erstat %Ln filer?"
+  },
   "Replacing moves the one there now to the trash.": "Erstatning flytter den nuværende til papirkurven.",
   "Restore": "Gendan",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "Gendanner %Ln elementer…"
   },
   "Right-click / Alt+⏎ / Menu": "Højreklik / Alt+⏎ / Menu",
+  "Save": "Gem",
   "Scroll": "Rul",
   "Search %1": "Søg i %1",
   "Search %1 and below": "Søg i %1 og undermapper",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "Der er intet i %1 at pakke ud.",
   "There's nothing to redo.": "Der er intet at gentage.",
   "There's nothing to undo.": "Der er intet at fortryde.",
+  "These already exist here: %1": "Disse findes allerede her: %1",
   "This computer can't make %1 drives.": "Denne computer kan ikke oprette %1-drev.",
   "This folder is empty": "Denne mappe er tom",
   "This folder no longer exists.": "Denne mappe findes ikke længere.",

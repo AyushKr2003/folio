@@ -42,6 +42,7 @@
     "few": "%Ln položky budou trvale smazány. Tuto akci nelze vzít zpět.",
     "other": "%Ln položek bude trvale smazáno. Tuto akci nelze vzít zpět."
   },
+  "A folder here is already called %1.": "Složka s názvem %1 tu již existuje.",
   "A folder, or a server's address like sftp://host/": "Složka, nebo adresa serveru, například sftp://host/",
   "A name can't contain \"/\".": "Název nesmí obsahovat \"/\".",
   "Add or remove one from the selection": "Přidat do výběru nebo z něj odebrat",
@@ -344,6 +345,12 @@
   "Rename / duplicate": "Přejmenovat / duplikovat",
   "Rename…": "Přejmenovat…",
   "Replace": "Nahradit",
+  "Replace %1?": "Nahradit %1?",
+  "Replace %Ln files?": {
+    "one": "Nahradit %Ln soubor?",
+    "few": "Nahradit %Ln soubory?",
+    "other": "Nahradit %Ln souborů?"
+  },
   "Replacing moves the one there now to the trash.": "Nahrazení přesune stávající položku do koše.",
   "Restore": "Obnovit",
   "Restore %Ln Items": {
@@ -370,6 +377,7 @@
     "other": "Obnovování %Ln položek…"
   },
   "Right-click / Alt+⏎ / Menu": "Kliknutí pravým tlačítkem / Alt+⏎ / Menu",
+  "Save": "Uložit",
   "Scroll": "Posouvání",
   "Search %1": "Prohledat %1",
   "Search %1 and below": "Prohledat %1 včetně podsložek",
@@ -419,6 +427,7 @@
   "There's nothing in %1 to extract.": "V %1 není nic k rozbalení.",
   "There's nothing to redo.": "Není co provést znovu.",
   "There's nothing to undo.": "Není co vrátit zpět.",
+  "These already exist here: %1": "Tyto položky tu již existují: %1",
   "This computer can't make %1 drives.": "Tento počítač nemůže vytvářet %1 jednotky.",
   "This folder is empty": "Tato složka je prázdná",
   "This folder no longer exists.": "Tato složka už neexistuje.",

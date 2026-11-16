@@ -40,6 +40,7 @@
     "one": "%Ln Element wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
     "other": "%Ln Elemente werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden."
   },
+  "A folder here is already called %1.": "Ein Ordner namens %1 existiert hier bereits.",
   "A folder, or a server's address like sftp://host/": "Ein Ordner oder eine Serveradresse wie sftp://host/",
   "A name can't contain \"/\".": "Ein Name darf kein \"/\" enthalten.",
   "Add or remove one from the selection": "Ein Element zur Auswahl hinzufügen oder daraus entfernen",
@@ -320,6 +321,11 @@
   "Rename / duplicate": "Umbenennen / duplizieren",
   "Rename…": "Umbenennen…",
   "Replace": "Ersetzen",
+  "Replace %1?": "%1 ersetzen?",
+  "Replace %Ln files?": {
+    "one": "%Ln Datei ersetzen?",
+    "other": "%Ln Dateien ersetzen?"
+  },
   "Replacing moves the one there now to the trash.": "Beim Ersetzen wird das vorhandene Element in den Papierkorb verschoben.",
   "Restore": "Wiederherstellen",
   "Restore %Ln Items": {
@@ -342,6 +348,7 @@
     "other": "%Ln Elemente werden wiederhergestellt…"
   },
   "Right-click / Alt+⏎ / Menu": "Rechtsklick / Alt+⏎ / Menütaste",
+  "Save": "Speichern",
   "Scroll": "Scrollen",
   "Search %1": "%1 durchsuchen",
   "Search %1 and below": "%1 und Unterordner durchsuchen",
@@ -390,6 +397,7 @@
   "There's nothing in %1 to extract.": "In %1 gibt es nichts zu entpacken.",
   "There's nothing to redo.": "Es gibt nichts zum Wiederholen.",
   "There's nothing to undo.": "Es gibt nichts rückgängig zu machen.",
+  "These already exist here: %1": "Diese existieren hier bereits: %1",
   "This computer can't make %1 drives.": "Dieser Computer kann keine %1-Laufwerke erstellen.",
   "This folder is empty": "Dieser Ordner ist leer",
   "This folder no longer exists.": "Dieser Ordner existiert nicht mehr.",
