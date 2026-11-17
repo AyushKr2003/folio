@@ -63,10 +63,12 @@ public:
     // it can't be) and how much is free.
     static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
     // The Devices list: GIO's volumes in its order, each mounted one as its
-    // drive among `drives` under GIO's name, and each unmounted one by `volume` (no path, and
-    // nothing to let go of, until it's mounted), then the drives GIO
+    // drive among `drives` under GIO's name, and each unmounted one by
+    // `volume` (no path, and nothing to let go of, until it's mounted),
+    // then the drives GIO
     // doesn't list (an fstab mount). A mounted volume `drives` leaves out
-    // (the system's own) stays out.
+    // stays out when it's the system's own, and is listed from GIO's mount
+    // otherwise (a loop device).
     static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives);
 
     // GIO's drives; null for a test's home, which has none.

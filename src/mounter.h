@@ -38,6 +38,8 @@ public:
     QString user() const { return m_user; }
     QStringList choices() const { return m_choices; }
     bool drive() const { return m_drive; }
+    // The volume a drive's mount is for, while busy with one.
+    QString volume() const { return busy() && m_drive ? m_volume : QString(); }
 
     // Mounts the location; `mounted` carries its local GVfs path. A
     // verified location's questions are answered here, with their first

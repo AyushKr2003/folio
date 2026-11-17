@@ -296,6 +296,7 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
                                    {"release", QString()}, {"free", -1}};
             continue;
         }
+        bool found = false;
         for (const QVariant &d : drives) {
             QVariantMap drive = d.toMap();
             if (drive.value("path").toString() != v.root)
@@ -307,7 +308,17 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
                 drive.insert("name", v.name);
             devices << drive;
             listed << v.root;
+            found = true;
             break;
+        }
+        // One physicalDrives passes over that isn't the system's (a disk
+        // image set up with udisksctl loop-setup) is still the drive it was
+        // before it mounted, so it stays, with its way to let go of it.
+        if (!found && !Disks::isSystemMount(v.root)) {
+            const QString release = v.canEject ? "eject" : v.canUnmount ? "unmount" : "";
+            devices << QVariantMap{{"name", v.name.isEmpty() ? v.root : v.name}, {"path", v.root}, {"icon", "drive"},
+                                   {"volume", v.id}, {"release", release}, {"free", v.free}};
+            listed << v.root;
         }
     }
     for (const QVariant &drive : drives)

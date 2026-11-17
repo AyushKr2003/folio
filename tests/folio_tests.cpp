@@ -5425,6 +5425,9 @@ private slots:
             {"Photos", "/dev/sdb1", "/run/media/me/Photos"},
             {"Home", "/dev/nvme0n1p2", "/home"},
             {"1.0 TB Volume", "/dev/sdc1", "/run/media/me/8CAE187EAE18634E"},
+            // A disk image set up with udisksctl loop-setup, which
+            // physicalDrives passes over.
+            {"Image", "/dev/loop3", "/run/media/me/Image", false, true, 11},
         };
         // The physical drives: a mounted volume is its drive, with what's
         // free and how it's let go of; one GIO doesn't list (an fstab
@@ -5437,7 +5440,7 @@ private slots:
                         {"release", "eject"}, {"free", 9}},
         };
         const auto devices = Places::devicesFrom(volumes, drives);
-        QCOMPARE(devices.size(), 4);
+        QCOMPARE(devices.size(), 5);
         const QVariantMap windows = devices.at(0).toMap();
         QCOMPARE(windows.value("name").toString(), QString("Windows"));
         QVERIFY(windows.value("path").toString().isEmpty());
@@ -5453,8 +5456,15 @@ private slots:
         const QVariantMap unlabeled = devices.at(2).toMap();
         QCOMPARE(unlabeled.value("name").toString(), QString("1.0 TB Volume"));
         QCOMPARE(unlabeled.value("path").toString(), QString("/run/media/me/8CAE187EAE18634E"));
-        QCOMPARE(devices.at(3).toMap().value("path").toString(), QString("/mnt/archive"));
-        QVERIFY(!devices.at(3).toMap().contains("volume"));
+        // The image stays once mounted, from GIO's mount, and unmounts.
+        const QVariantMap image = devices.at(3).toMap();
+        QCOMPARE(image.value("name").toString(), QString("Image"));
+        QCOMPARE(image.value("path").toString(), QString("/run/media/me/Image"));
+        QCOMPARE(image.value("volume").toString(), QString("/dev/loop3"));
+        QCOMPARE(image.value("release").toString(), QString("unmount"));
+        QCOMPARE(image.value("free").toLongLong(), 11);
+        QCOMPARE(devices.at(4).toMap().value("path").toString(), QString("/mnt/archive"));
+        QVERIFY(!devices.at(4).toMap().contains("volume"));
     }
 
     void drivesSayWhatsFreeInTheLanguagesDigits()

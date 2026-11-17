@@ -24,6 +24,10 @@ public:
         QString id;
         // Where it's mounted; empty while it isn't.
         QString root;
+        // While mounted: how it's let go of, and what's free (-1 unknown).
+        bool canEject = false;
+        bool canUnmount = false;
+        qint64 free = -1;
     };
 
     explicit Drives(QObject *parent = nullptr);

@@ -364,8 +364,15 @@ void Backend::finish(int run, const Plugins::Result &result) {
 }
 
 void Backend::openVolume(const QString &volume, const QString &name) {
-    if (m_mounter.busy())
+    if (m_mounter.busy()) {
+        // Clicked while it's mounting as it was plugged in: that mount
+        // goes on, and opens the drive once it's done.
+        if (m_mountDrive && !m_mountOpens && m_mounter.volume() == volume) {
+            m_mountOpens = true;
+            setBusy(tr("Opening %1…").arg(m_mountName));
+        }
         return;
+    }
     m_mountName = name.isEmpty() ? tr("the drive") : name;
     m_mountDrive = true;
     m_mountOpens = true;
