@@ -20,6 +20,7 @@
         <file>FolioMenuItem.qml</file>
         <file>MenuLine.qml</file>
         <file>FolioScrollBar.qml</file>
+        <file>FileListView.qml</file>
         <file>PlainButton.qml</file>
         <file>PlainField.qml</file>
         <file>SortMenu.qml</file>

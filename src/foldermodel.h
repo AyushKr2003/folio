@@ -6,6 +6,7 @@
 #include <QFileSystemWatcher>
 #include <QLocale>
 #include <QStringList>
+#include <QThreadPool>
 #include <QTimer>
 #include <QVariantList>
 #include <QSet>
@@ -83,6 +84,8 @@ public:
     void setShowHidden(bool show);
     QString sortMode() const { return m_sort; }
     void setSortMode(const QString &sort);
+    // Goes to `path` already in `sort`, listing it once.
+    void setPath(const QString &path, const QString &sort);
     QString query() const { return m_query; }
     void setQuery(const QString &query);
     QVariantList items() const { return m_items; }
@@ -110,6 +113,10 @@ public:
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
 
+    // Listings run here, not on the global pool, so folder counts and file
+    // transfers can't hold up the folder just opened.
+    static QThreadPool &listingPool();
+
     // Synchronous building blocks, used by the background passes and tests.
     // A listing stops, empty, as soon as `stop` returns true. Names sort
     // by `locale`'s alphabet; a background pass passes the one it was
@@ -123,8 +130,8 @@ public:
     // A folder's item count and first pictures, for the preview window.
     static void summarize(Entry &entry, bool showHidden);
     // Only how many items a folder holds, for the folder counts, which have
-    // no use for its pictures or their order.
-    static int itemCount(const QString &folder, bool showHidden);
+    // no use for its pictures or their order. Stopped partway, it's -1 (unknown).
+    static int itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop = {});
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
     // The Recents view: a path that isn't a folder, listing recently used files.
@@ -137,6 +144,12 @@ public:
     // whose names contain `query` (ignoring case), or all of them.
     static bool isPluginView(const QString &path) { return path.startsWith("plugin:") && !path.contains('/'); }
     static QVector<Entry> listItems(const QVariantList &items, const QString &query = {});
+    // The trash is the home trash's files folder, and it lists every trash's:
+    // what's deleted on another drive goes to that drive's own.
+    static bool isTrash(const QString &path);
+    static QVector<Entry> listTrash(const QStringList &trashDirs, const QString &query, bool showHidden,
+                                    const QString &sort, const std::function<bool()> &stop = {}, int limit = 1000,
+                                    const QLocale &locale = QLocale(), const QStringList &filter = {});
     // Recents and plugins' views: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || isPluginView(path); }
     static QString kindForMime(const QString &mime);

@@ -3,7 +3,7 @@ import QtQuick.Controls
 
 // The folder as a list: name, size and date (the date, then the size, step
 // aside in a narrow window). No headings: the sort menu and S sort it.
-ListView {
+FileListView {
     id: list
 
     function select(row, keep) { selecting.select(row, keep) }
@@ -41,17 +41,13 @@ ListView {
         onTapped: (point) => list.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
     }
 
-    clip: true
     focus: true
     keyNavigationEnabled: true
     // No cursor of its own to start with: the pane puts it back where the
     // last view had it, and one on the first item would select that instead.
     currentIndex: -1
-    acceptedButtons: Qt.NoButton
-    boundsBehavior: Flickable.StopAtBounds
     highlightFollowsCurrentItem: false
     model: backend.folder
-    ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileRow {
         width: list.width

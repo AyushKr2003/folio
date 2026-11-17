@@ -16,7 +16,7 @@ FolioMenu {
     readonly property var current: orders.find(o => o.mode === backend.folder.sortMode) || orders[0]
     function step(by) {
         const i = orders.findIndex(o => o.mode === backend.folder.sortMode)
-        backend.folder.sortMode = orders[(i + by + orders.length) % orders.length].mode
+        backend.chooseSort(orders[(i + by + orders.length) % orders.length].mode)
     }
 
     Repeater {
@@ -25,7 +25,7 @@ FolioMenu {
             required property var modelData
             text: modelData.label
             checked: backend.folder.sortMode === modelData.mode
-            onTriggered: backend.folder.sortMode = modelData.mode
+            onTriggered: backend.chooseSort(modelData.mode)
         }
     }
 }

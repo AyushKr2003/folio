@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -39,6 +40,7 @@
 static QList<FileOps::Change> s_undo, s_redo;
 static QList<FileOps *> s_everyone;
 static constexpr int historyLength = 50;
+static constexpr int stopCheckMs = 100;
 
 // Work under way in this Folio, whichever pane started it. Panes work side
 // by side, but an undo or redo runs alone, so nothing changes the items it
@@ -223,8 +225,14 @@ static bool writeAll(int fd, const char *data, qint64 size) {
 // it's made with them, so a private file is never open to others while it's
 // copied.
 static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) {
-    QFile in(from), out(to);
-    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly | QIODevice::NewOnly, in.permissions()))
+    QFile in, out(to);
+    // An open that waits would hold a pipe nobody writes to, or a file another program holds a lease on, out of Stop's reach; the lease is asked for again until it's given up.
+    int source;
+    while ((source = ::open(QFile::encodeName(from).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0
+           && errno == EWOULDBLOCK && !(job && job->cancelled))
+        ::usleep(stopCheckMs * 1000);
+    if (source < 0 || !in.open(source, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)
+        || !out.open(QIODevice::WriteOnly | QIODevice::NewOnly, in.permissions()))
         return false;
     bool kernel = true, ok = true;
     QByteArray buffer;
@@ -245,12 +253,16 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
                 continue;
             }
         } else {
+            // Read only what's there: a pipe with no writer yet reads as ended, and a silent one would hold the copy out of Stop's reach.
+            pollfd waiting{in.handle(), POLLIN, 0};
+            if (::poll(&waiting, 1, stopCheckMs) <= 0)
+                continue;
             buffer.resize(1 << 20);
             n = ::read(in.handle(), buffer.data(), buffer.size());
             if (n > 0 && !writeAll(out.handle(), buffer.constData(), n))
                 n = -1;
         }
-        if (n < 0 && errno == EINTR)
+        if (n < 0 && (errno == EINTR || errno == EAGAIN))
             continue;
         if (n <= 0) {
             ok = n == 0;
@@ -1359,7 +1371,11 @@ QString FileOps::trashOne(const QString &path, QString *error) {
 }
 
 QString FileOps::homeTrash() {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/Trash";
+    // The trash is told from paths once they're cleaned, and cleaning takes
+    // link/.. to the folder beside link, not to where link leads.
+    const QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    const QString real = data.split('/').contains("..") ? QFileInfo(data).canonicalFilePath() : QString();
+    return (real.isEmpty() ? data : real) + "/Trash";
 }
 
 QStringList FileOps::trashDirs() {
@@ -1375,12 +1391,29 @@ QStringList FileOps::trashDirs() {
     return dirs;
 }
 
-bool FileOps::inTrash(const QString &path) const {
+// The trash folder whose files `path` is among, read from the path: asking
+// every mounted drive would stall the window on one that doesn't answer.
+static QString trashFor(const QString &path) {
     const QString clean = QDir::cleanPath(path);
-    for (const QString &dir : trashDirs())
-        if (clean == dir + "/files" || clean.startsWith(dir + "/files/"))
-            return true;
-    return false;
+    const auto under = [&clean](const QString &dir) { return clean == dir + "/files" || clean.startsWith(dir + "/files/"); };
+    if (const QString home = QDir::cleanPath(FileOps::homeTrash()); under(home))
+        return home;
+    // A drive's own, at its top; the innermost, as a drive can be mounted in
+    // another's trash. The only drive asked is the one named there.
+    const QString uid = QString::number(getuid());
+    QString found;
+    for (const QString &marker : {"/.Trash-" + uid, "/.Trash/" + uid}) {
+        for (qsizetype at = clean.indexOf(marker + "/files"); at >= 0; at = clean.indexOf(marker + "/files", at + 1)) {
+            const QString dir = clean.left(at + marker.size()), top = at == 0 ? QStringLiteral("/") : clean.left(at);
+            if (dir.size() > found.size() && under(dir) && QStorageInfo(top).rootPath() == top)
+                found = dir;
+        }
+    }
+    return found;
+}
+
+bool FileOps::inTrash(const QString &path) const {
+    return !trashFor(path).isEmpty();
 }
 
 QString FileOps::infoFileFor(const QString &trashedPath) {
@@ -1390,10 +1423,8 @@ QString FileOps::infoFileFor(const QString &trashedPath) {
     // happens to be called "info".
     const QFileInfo item(trashedPath);
     const QString folder = QDir::cleanPath(item.absolutePath());
-    for (const QString &dir : trashDirs())
-        if (folder == QDir::cleanPath(dir + "/files"))
-            return dir + "/info/" + item.fileName() + ".trashinfo";
-    return {};
+    const QString dir = trashFor(folder);
+    return !dir.isEmpty() && folder == dir + "/files" ? dir + "/info/" + item.fileName() + ".trashinfo" : QString();
 }
 
 QString FileOps::originalPath(const QString &trashedPath) {
@@ -1407,9 +1438,8 @@ QString FileOps::originalPath(const QString &trashedPath) {
         if (path.startsWith('/'))
             return path;
         // A drive's own trash records paths from the top of that drive.
-        const QString trashDir = QFileInfo(QFileInfo(trashedPath).absolutePath()).absolutePath();
-        const QString top = trashDir.contains("/.Trash/") ? trashDir.section("/.Trash/", 0, 0)
-                                                          : QFileInfo(trashDir).absolutePath();
+        const QString up = QFileInfo(QFileInfo(QFileInfo(trashedPath).absolutePath()).absolutePath()).absolutePath();
+        const QString top = QFileInfo(up).fileName() == ".Trash" ? QFileInfo(up).absolutePath() : up;
         return QDir(top).filePath(path);
     }
     return {};
