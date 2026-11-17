@@ -5788,7 +5788,7 @@ private slots:
             {"1.0 TB Volume", "/dev/sdc1", "/run/media/me/8CAE187EAE18634E"},
             // A disk image set up with udisksctl loop-setup, which
             // physicalDrives passes over.
-            {"Image", "/dev/loop3", "/run/media/me/Image", false, true, 11},
+            {"Image", "/dev/loop3", "/run/media/me/Image", false, true},
         };
         // The physical drives: a mounted volume is its drive, with what's
         // free and how it's let go of; one GIO doesn't list (an fstab
@@ -5800,7 +5800,10 @@ private slots:
             QVariantMap{{"name", "8CAE187EAE18634E"}, {"path", "/run/media/me/8CAE187EAE18634E"}, {"icon", "drive"},
                         {"release", "eject"}, {"free", 9}},
         };
-        const auto devices = Places::devicesFrom(volumes, drives);
+        // What's free on the image comes from the mounts already read.
+        Places::Mount imageMount{"/run/media/me/Image", "/dev/loop3", "ext4", "Image"};
+        imageMount.free = 11;
+        const auto devices = Places::devicesFrom(volumes, drives, {imageMount});
         QCOMPARE(devices.size(), 5);
         const QVariantMap windows = devices.at(0).toMap();
         QCOMPARE(windows.value("name").toString(), QString("Windows"));

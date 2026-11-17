@@ -287,7 +287,8 @@ QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &s
     return drives;
 }
 
-QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives) {
+QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives,
+                                 const QList<Mount> &mounts) {
     QVariantList devices;
     QStringList listed;
     for (const Drives::Volume &v : volumes) {
@@ -316,8 +317,16 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
         // before it mounted, so it stays, with its way to let go of it.
         if (!found && !Disks::isSystemMount(v.root)) {
             const QString release = v.canEject ? "eject" : v.canUnmount ? "unmount" : "";
+            // What's free comes from the mounts read off the UI thread; a
+            // drive slow to answer never holds up the window here.
+            qint64 free = -1;
+            for (const Mount &m : mounts)
+                if (m.root == v.root) {
+                    free = m.free;
+                    break;
+                }
             devices << QVariantMap{{"name", v.name.isEmpty() ? v.root : v.name}, {"path", v.root}, {"icon", "drive"},
-                                   {"volume", v.id}, {"release", release}, {"free", v.free}};
+                                   {"volume", v.id}, {"release", release}, {"free", free}};
             listed << v.root;
         }
     }
@@ -370,7 +379,7 @@ void Places::mountsRead() {
             g_object_unref(gmount);
         }
     const QVariantList physical = physicalDrives(mounts, m_systemDevice);
-    const QVariantList devices = m_drives ? devicesFrom(m_drives->volumes(), physical) : physical;
+    const QVariantList devices = m_drives ? devicesFrom(m_drives->volumes(), physical, mounts) : physical;
     if (devices != m_devices) {
         m_devices = devices;
         emit changed();

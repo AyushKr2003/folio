@@ -68,8 +68,9 @@ public:
     // then the drives GIO
     // doesn't list (an fstab mount). A mounted volume `drives` leaves out
     // stays out when it's the system's own, and is listed from GIO's mount
-    // otherwise (a loop device).
-    static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives);
+    // otherwise (a loop device), with what's free from `mounts`.
+    static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives,
+                                    const QList<Mount> &mounts = {});
 
     // GIO's drives; null for a test's home, which has none.
     Drives *drives() const { return m_drives; }

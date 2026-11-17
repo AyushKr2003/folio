@@ -1,7 +1,6 @@
 #include "drives.h"
 
 #include <QPointer>
-#include <QStorageInfo>
 #include <QTimer>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -151,9 +150,6 @@ QList<Drives::Volume> Drives::volumes() const {
                 v.name = name;
             v.canEject = g_mount_can_eject(mount);
             v.canUnmount = g_mount_can_unmount(mount);
-            const QStorageInfo storage(v.root);
-            if (storage.isValid() && storage.isReady() && !storage.isReadOnly())
-                v.free = storage.bytesAvailable();
             g_object_unref(mount);
         } else if (!g_volume_can_mount(volume)) {
             continue;
