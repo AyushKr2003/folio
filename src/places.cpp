@@ -301,6 +301,10 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
             if (drive.value("path").toString() != v.root)
                 continue;
             drive.insert("volume", v.id);
+            // GIO's name, as the row had before it mounted; the mount folder
+            // an unlabeled drive would be named after is its UUID.
+            if (!v.name.isEmpty())
+                drive.insert("name", v.name);
             devices << drive;
             listed << v.root;
             break;

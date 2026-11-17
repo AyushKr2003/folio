@@ -143,6 +143,11 @@ QList<Drives::Volume> Drives::volumes() const {
         Volume v{take(g_volume_get_name(volume)), idOf(volume), {}};
         if (GMount *mount = g_volume_get_mount(volume)) {
             v.root = rootOf(mount);
+            // What the mount calls itself: its label, else "1.0 TB Volume",
+            // never the UUID folder udisks mounts an unlabeled one in.
+            const QString name = take(g_mount_get_name(mount));
+            if (!name.isEmpty())
+                v.name = name;
             g_object_unref(mount);
         } else if (!g_volume_can_mount(volume)) {
             continue;

@@ -5424,6 +5424,7 @@ private slots:
             {"Windows", "/dev/nvme0n1p3", ""},
             {"Photos", "/dev/sdb1", "/run/media/me/Photos"},
             {"Home", "/dev/nvme0n1p2", "/home"},
+            {"1.0 TB Volume", "/dev/sdc1", "/run/media/me/8CAE187EAE18634E"},
         };
         // The physical drives: a mounted volume is its drive, with what's
         // free and how it's let go of; one GIO doesn't list (an fstab
@@ -5431,9 +5432,12 @@ private slots:
         const QVariantList drives{
             QVariantMap{{"name", "archive"}, {"path", "/mnt/archive"}, {"icon", "drive"}, {"release", ""}, {"free", 5}},
             QVariantMap{{"name", "Photos"}, {"path", "/run/media/me/Photos"}, {"icon", "drive"}, {"release", "eject"}, {"free", 7}},
+            // Unlabeled, so named after its mount folder, the UUID.
+            QVariantMap{{"name", "8CAE187EAE18634E"}, {"path", "/run/media/me/8CAE187EAE18634E"}, {"icon", "drive"},
+                        {"release", "eject"}, {"free", 9}},
         };
         const auto devices = Places::devicesFrom(volumes, drives);
-        QCOMPARE(devices.size(), 3);
+        QCOMPARE(devices.size(), 4);
         const QVariantMap windows = devices.at(0).toMap();
         QCOMPARE(windows.value("name").toString(), QString("Windows"));
         QVERIFY(windows.value("path").toString().isEmpty());
@@ -5444,9 +5448,13 @@ private slots:
         QCOMPARE(photos.value("volume").toString(), QString("/dev/sdb1"));
         QCOMPARE(photos.value("release").toString(), QString("eject"));
         QCOMPARE(photos.value("free").toLongLong(), 7);
-        // The system's own stays out, as physicalDrives left it.
-        QCOMPARE(devices.at(2).toMap().value("path").toString(), QString("/mnt/archive"));
-        QVERIFY(!devices.at(2).toMap().contains("volume"));
+        // The system's own stays out, as physicalDrives left it. An
+        // unlabeled drive takes GIO's name, not its UUID folder's.
+        const QVariantMap unlabeled = devices.at(2).toMap();
+        QCOMPARE(unlabeled.value("name").toString(), QString("1.0 TB Volume"));
+        QCOMPARE(unlabeled.value("path").toString(), QString("/run/media/me/8CAE187EAE18634E"));
+        QCOMPARE(devices.at(3).toMap().value("path").toString(), QString("/mnt/archive"));
+        QVERIFY(!devices.at(3).toMap().contains("volume"));
     }
 
     void drivesSayWhatsFreeInTheLanguagesDigits()
