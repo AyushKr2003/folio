@@ -1,5 +1,7 @@
 #include "drives.h"
 
+#include <QFile>
+#include <QFileInfo>
 #include <QPointer>
 #include <QTimer>
 
@@ -52,8 +54,11 @@ struct DrivesCallbacks {
         if (!g_volume_should_automount(volume) || !g_volume_can_mount(volume) || !Drives::automountWanted())
             return;
         // An automounter of the desktop's own (udiskie, a shell) gets the
-        // first go, so a drive isn't mounted twice, nor an encrypted one's
-        // passphrase asked for twice.
+        // first go, so a drive isn't mounted twice. An encrypted one is
+        // left to a click: another automounter may still be asking for its
+        // passphrase when the wait is over, and Folio would ask again.
+        if (Drives::encrypted(volume))
+            return;
         const QString id = Drives::idOf(volume);
         const QString name = take(g_volume_get_name(volume));
         QTimer::singleShot(Drives::automountDelayMs, self, [self, id, name] {
@@ -169,6 +174,25 @@ void Drives::mountQuietly(const QString &id) {
                    new Pending{this, take(g_volume_get_name(volume))});
     g_object_unref(operation);
     g_object_unref(volume);
+}
+
+QString Drives::usageOf(const QString &name) {
+    QFile dev(QStringLiteral("/sys/class/block/%1/dev").arg(name));
+    if (!dev.open(QIODevice::ReadOnly))
+        return {};
+    QFile data(QStringLiteral("/run/udev/data/b%1").arg(QString::fromLatin1(dev.readAll()).trimmed()));
+    if (!data.open(QIODevice::ReadOnly))
+        return {};
+    for (const QByteArray &line : data.readAll().split('\n'))
+        if (line.startsWith("E:ID_FS_USAGE="))
+            return QString::fromLatin1(line.mid(14));
+    return {};
+}
+
+bool Drives::encrypted(GVolume *volume) {
+    const QString device = take(g_volume_get_identifier(volume, G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE));
+    const QString name = QFileInfo(QFileInfo(device).canonicalFilePath()).fileName();
+    return !name.isEmpty() && usageOf(name) == "crypto";
 }
 
 bool Drives::automountWanted() {

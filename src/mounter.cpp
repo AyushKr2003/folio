@@ -17,15 +17,6 @@
 
 namespace {
 
-// A block device holds a filesystem, by what udev found on it.
-bool holdsFilesystem(const QString &name) {
-    QFile dev(QStringLiteral("/sys/class/block/%1/dev").arg(name));
-    if (!dev.open(QIODevice::ReadOnly))
-        return false;
-    QFile data(QStringLiteral("/run/udev/data/b%1").arg(QString::fromLatin1(dev.readAll()).trimmed()));
-    return data.open(QIODevice::ReadOnly) && data.readAll().contains("\nE:ID_FS_USAGE=filesystem\n");
-}
-
 // The encrypted volume `id` names unlocked (the kernel shows a cleartext,
 // dm-crypt, device holding it) and nothing inside is a filesystem: no
 // filesystem at all, or LVM. A filesystem inside means it's only slow.
@@ -44,7 +35,7 @@ bool unlockedEmpty(const QString &id) {
     if (holders.isEmpty())
         return false;
     for (const QString &holder : holders)
-        if (holdsFilesystem(holder))
+        if (Drives::usageOf(holder) == "filesystem")
             return false;
     return true;
 }

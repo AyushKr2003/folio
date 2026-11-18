@@ -6303,6 +6303,18 @@ private slots:
         QVERIFY(!devices.at(4).toMap().contains("volume"));
     }
 
+    void drivesReadWhatUdevFoundOnADevice()
+    {
+        // The system's own disk holds a filesystem (an encrypted one's
+        // cleartext device does too); a device that isn't there, nothing.
+        const QString device = QFileInfo(QString::fromUtf8(QStorageInfo::root().device())).canonicalFilePath();
+        const QString name = QFileInfo(device).fileName();
+        if (!device.startsWith("/dev/") || !QFileInfo::exists("/run/udev/data"))
+            QSKIP("No udev, or the system doesn't run from a block device");
+        QCOMPARE(Drives::usageOf(name), QString("filesystem"));
+        QCOMPARE(Drives::usageOf("no-such-device"), QString());
+    }
+
     void drivesSayWhatsFreeInTheLanguagesDigits()
     {
         QQmlEngine engine;
