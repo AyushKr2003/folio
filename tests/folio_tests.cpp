@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QQmlComponent>
+#include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
@@ -672,6 +673,206 @@ private slots:
         QTRY_COMPARE(orders(), expected);
     }
 
+    // A place picked in the sidebar is the first column shown, with the
+    // folders above it scrolled out of sight to the left; going up shows
+    // them again.
+    void columnsStartAtAPlacePicked()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Dropbox/Audio");
+        QDir(home.path()).mkpath("Work");
+        const QString dropbox = home.filePath("Dropbox");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Work"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function startAt(path) { folderView.startAt(path) }
+                function scrolled() {
+                    const flick = folderView.children[folderView.children.length - 1]
+                    return flick.contentX
+                }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsStartTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        const auto scrolled = [&] {
+            QVariant x;
+            QMetaObject::invokeMethod(root.get(), "scrolled", Q_RETURN_ARG(QVariant, x));
+            return x.toReal();
+        };
+        // Wide enough for home, Work and more: nothing's scrolled.
+        QTRY_COMPARE(backend.path(), home.filePath("Work"));
+        QCOMPARE(scrolled(), 0.0);
+        // Dropbox from the sidebar: home's column is out of sight.
+        QMetaObject::invokeMethod(root.get(), "startAt", Q_ARG(QVariant, dropbox));
+        backend.navigate(dropbox);
+        QTRY_COMPARE(scrolled(), 261.0);
+        // Deeper, it stays out of sight.
+        backend.navigate(dropbox + "/Audio");
+        QTRY_COMPARE(scrolled(), 261.0);
+        // Back up to Dropbox and then home, it's shown again.
+        backend.goUp();
+        QTRY_COMPARE(scrolled(), 261.0);
+        backend.goUp();
+        QTRY_COMPARE(scrolled(), 0.0);
+        // Picking where it already is starts there too.
+        backend.navigate(dropbox);
+        QTRY_COMPARE(scrolled(), 0.0);
+        QMetaObject::invokeMethod(root.get(), "startAt", Q_ARG(QVariant, dropbox));
+        QTRY_COMPARE(scrolled(), 261.0);
+    }
+
+    // A click on a folder in the last column, the one showing what's inside
+    // the selected folder, goes there: the folder it's in is shown, with it
+    // selected and its own contents beside it.
+    void columnsClickIntoTheLastColumn()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Documents/Racing/2025/Le Mans");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Documents"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1200; height: 480; visible: true
+                property alias cursor: folderView.currentIndex
+                readonly property string selected: folderView.selected.name || ""
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        root->setProperty("cursor", 0);
+        QTRY_COMPARE(root->property("selected").toString(), QString("Racing"));
+        // home's column, Documents', then Racing's contents: 2025.
+        QTest::qWait(300);
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(2 * 261 + 80, 20));
+        QTRY_COMPARE(backend.path(), home.filePath("Documents/Racing"));
+        QTRY_COMPARE(root->property("selected").toString(), QString("2025"));
+    }
+
+    // The list's tree: a folder opened in place lists its items under it a
+    // level in, read again with the folder when anything changes; closed,
+    // they go, with anything opened or selected inside.
+    void folderOpensFoldersInPlace()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("alpha/inner");
+        QDir(dir.path()).mkpath("beta");
+        write(dir.filePath("alpha/x.txt"), "x");
+        write(dir.filePath("alpha/inner/deep.txt"), "x");
+        write(dir.filePath("top.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        const auto names = [&] {
+            QStringList list;
+            for (int row = 0; row < model.count(); ++row)
+                list << QString(model.get(row).value("depth").toInt() * 2, ' ') + model.get(row).value("name").toString();
+            return list;
+        };
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+        QVERIFY(model.expandable());
+
+        model.setExpanded(0, true);
+        QVERIFY(model.isExpanded(0));
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "beta", "top.txt"}));
+        QCOMPARE(model.parentRow(2), 0);
+        QCOMPARE(model.parentRow(3), -1);
+        // Only the folder's own items go by their names.
+        QCOMPARE(model.indexOf("x.txt"), -1);
+        QCOMPARE(model.indexOfPath(dir.filePath("alpha/x.txt")), 2);
+
+        // A level deeper still.
+        model.setExpanded(1, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "    deep.txt", "  x.txt", "beta", "top.txt"}));
+
+        // A file added inside shows, the folder read again with it.
+        write(dir.filePath("alpha/y.txt"), "y");
+        QTRY_COMPARE_WITH_TIMEOUT(names(), QStringList({"alpha", "  inner", "    deep.txt", "  x.txt", "  y.txt", "beta", "top.txt"}), 3000);
+
+        // Closed, what's inside goes, the folder opened within it and what
+        // was selected there too.
+        model.selectRows({2, 4});
+        QCOMPARE(model.selectedCount(), 2);
+        model.setExpanded(0, false);
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+        QCOMPARE(model.selectedCount(), 0);
+        model.setExpanded(0, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+
+        // Closed and opened again before its first reading is in, it lists
+        // its items once, not once for each opening.
+        model.setExpanded(0, false);
+        model.setExpanded(0, true);
+        model.setExpanded(0, false);
+        model.setExpanded(0, true);
+        QTRY_COMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+        QTest::qWait(200);
+        QCOMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+
+        // One that can't be read closes again, saying why, rather than
+        // looking empty.
+        QSignalSpy failed(&model, &FolderModel::expandFailed);
+        QVERIFY(QFile::setPermissions(dir.filePath("beta"), QFileDevice::Permissions()));
+        model.setExpanded(4, true);
+        QTRY_COMPARE(failed.count(), 1);
+        QVERIFY(failed.last().first().toString().startsWith("beta: "));
+        QVERIFY(!model.isExpanded(4));
+        QCOMPARE(names(), QStringList({"alpha", "  inner", "  x.txt", "  y.txt", "beta", "top.txt"}));
+        QVERIFY(QFile::setPermissions(dir.filePath("beta"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+
+        // Files and the folder's other views don't open.
+        model.setExpanded(5, true);
+        QVERIFY(!model.isExpanded(5));
+        model.collapseAll();
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+
+        // A search is a flat list, and nothing opens in it.
+        model.setExpanded(0, true);
+        QTRY_COMPARE(model.count(), 6);
+        model.setQuery("x");
+        QVERIFY(!model.expandable());
+        QVERIFY(loaded.wait(3000));
+        QVERIFY(!names().join(",").contains("  "));
+        model.setQuery({});
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(names(), QStringList({"alpha", "beta", "top.txt"}));
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;
@@ -841,8 +1042,6 @@ private slots:
                 property string viewMode: "columns"
                 property real zoom: 1
                 property bool split: false
-                property bool previewVisible: false
-                property bool detailsFit: false
                 property bool helpVisible: false
                 property var activePane: null
                 function raise() {}
@@ -2469,19 +2668,29 @@ private slots:
         QDir(dir.path()).mkdir("sub");
         FileOps ops;
         QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        // Each rename is told, so the sidebar's pins follow it: by Rename,
+        // and by undoing and redoing one. A blank name renames nothing.
+        QSignalSpy renamed(&ops, &FileOps::renamed);
+        const auto lastRename = [&] { return renamed.last().at(0).toString() + " > " + renamed.last().at(1).toString(); };
         QCOMPARE(ops.undoName(), QString());
 
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "  "), QString());
+        QCOMPARE(renamed.count(), 0);
         QCOMPARE(ops.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QCOMPARE(lastRename(), dir.filePath("a.txt") + " > " + dir.filePath("b.txt"));
         QCOMPARE(ops.undoName(), QString("Undo Rename"));
         ops.undo();
         QTRY_VERIFY(ops.busy().isEmpty());
         QVERIFY(QFile::exists(dir.filePath("a.txt")));
         QVERIFY(!QFile::exists(dir.filePath("b.txt")));
         QCOMPARE(notice.last().first().toString(), QString("Undid renaming a.txt."));
+        QCOMPARE(lastRename(), dir.filePath("b.txt") + " > " + dir.filePath("a.txt"));
         ops.redo();
         QTRY_VERIFY(ops.busy().isEmpty());
         QVERIFY(QFile::exists(dir.filePath("b.txt")));
         QCOMPARE(notice.last().first().toString(), QString("Redid renaming a.txt."));
+        QCOMPARE(lastRename(), dir.filePath("a.txt") + " > " + dir.filePath("b.txt"));
+        const int renames = renamed.count();
 
         ops.cut({dir.filePath("b.txt"), dir.filePath("c.txt")});
         ops.paste(dir.filePath("sub"));
@@ -2515,6 +2724,8 @@ private slots:
         QVERIFY(QDir(dir.filePath("sub")).isEmpty());
         QCOMPARE(QDir(data.filePath("Trash/files")).entryList(QDir::Files), QStringList({"b.txt", "c.txt"}));
         QCOMPARE(failed.count(), 0);
+        // Moving and trashing aren't renaming.
+        QCOMPARE(renamed.count(), renames);
 
         // Undo goes back through them all, the newest first.
         for (int i = 0; i < 3; ++i) {
@@ -2525,6 +2736,9 @@ private slots:
         QCOMPARE(contents(dir.filePath("c.txt")), QByteArray("c"));
         QCOMPARE(ops.undoName(), QString());
         QCOMPARE(failed.count(), 0);
+        // The last of them a rename, told as the others weren't.
+        QCOMPARE(renamed.count(), renames + 1);
+        QCOMPARE(lastRename(), dir.filePath("b.txt") + " > " + dir.filePath("a.txt"));
     }
 
     void undoAndRedoPasteAndReplace()
@@ -3776,7 +3990,7 @@ private slots:
             return list;
         };
         QCOMPARE(names(Places(home.path())),
-                 QStringList({"Documents", "Omarchy", "project9", "project10", "Work"}));
+                 QStringList({"Documents", "Omarchy", "Project9", "Project10", "Work"}));
 
         // The XDG folders have glyphs of their own; Dropbox's mark comes
         // from its plugin.
@@ -3824,6 +4038,73 @@ private slots:
         QVERIFY(saved.contains("Work/folio"));
         QVERIFY(!saved.contains("Work/hype"));
         QCOMPARE(places.pinned().size(), 1);
+    }
+
+    // Hide in a Home folder's sidebar menu takes it out of Home; Show in
+    // Home puts it back. A hidden one can be pinned, and a rename takes its
+    // hiding (or its pin) along.
+    void placesHideFoldersFromHome()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Work", "go", "Dropbox", "Elsewhere/deep"})
+            QDir(home.path()).mkpath(dir);
+        auto names = [](const Places &p) {
+            QStringList list;
+            for (const auto &v : p.places()) list << v.toMap().value("name").toString();
+            return list;
+        };
+        Places places(home.path());
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Go", "Work"}));
+
+        places.hideFromHome(home.filePath("go"));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Work"}));
+        QVERIFY(places.hiddenFromHome(home.filePath("go")));
+        QVERIFY(!places.hiddenFromHome(home.filePath("Work")));
+        // Only home's own folders are hidden from Home.
+        places.hideFromHome(home.filePath("Elsewhere/deep"));
+        QVERIFY(!places.hiddenFromHome(home.filePath("Elsewhere/deep")));
+        // Kept between launches.
+        QCOMPARE(names(Places(home.path())), QStringList({"Dropbox", "Elsewhere", "Work"}));
+
+        // No longer under Home, it can be pinned.
+        QCOMPARE(places.pin(home.filePath("go")), QString());
+        QCOMPARE(places.pinned().size(), 1);
+
+        // Renamed, it stays hidden and pinned under its new name.
+        QVERIFY(QDir(home.path()).rename("go", "golang"));
+        places.renamed(home.filePath("go"), home.filePath("golang"));
+        QVERIFY(places.hiddenFromHome(home.filePath("golang")));
+        QVERIFY(!places.hiddenFromHome(home.filePath("go")));
+        QVERIFY(places.isPinned(home.filePath("golang")));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Work"}));
+
+        // Shown in Home again, it's there rather than among the pins.
+        places.showInHome(home.filePath("golang"));
+        QCOMPARE(names(places), QStringList({"Dropbox", "Elsewhere", "Golang", "Work"}));
+        QVERIFY(!places.hiddenFromHome(home.filePath("golang")));
+        QCOMPARE(places.pinned().size(), 0);
+
+
+        // A name is kept whole, whatever it has in it: hiding one with a
+        // newline hides it, not folders named after its halves.
+        QVERIFY(QDir(home.path()).mkdir("Two\nLines"));
+        QVERIFY(QDir(home.path()).mkdir("Two"));
+        Places lines(home.path());
+        lines.hideFromHome(home.filePath("Two\nLines"));
+        QVERIFY(lines.hiddenFromHome(home.filePath("Two\nLines")));
+        QVERIFY(!lines.hiddenFromHome(home.filePath("Two")));
+        QVERIFY(names(Places(home.path())).contains("Two"));
+        QVERIFY(!names(Places(home.path())).contains("Two\nLines"));
+        lines.showInHome(home.filePath("Two\nLines"));
+        // A save that fails says so, and changes nothing.
+        const QString settings = home.filePath(".config/folio");
+        QVERIFY(QFile::setPermissions(settings, QFile::ReadOwner | QFile::ExeOwner));
+        QSignalSpy failed(&places, &Places::failed);
+        places.hideFromHome(home.filePath("Work"));
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(failed.last().first().toString().startsWith("Couldn't save the hidden folders"));
+        QVERIFY(names(places).contains("Work"));
+        QVERIFY(QFile::setPermissions(settings, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
     }
 
     void typedViewsGoToTheirView()
@@ -5883,6 +6164,52 @@ private slots:
         QCOMPARE(Thumbnails::bucketFor(512), QString("x-large"));
     }
 
+    // The details' sharp pictures: a large one is made once at the size
+    // asked for and kept, then read back from Folio's own cache until it
+    // changes; a small one is read as it is.
+    void thumbnailsKeepSharpPictures()
+    {
+        QTemporaryDir dir;
+        const QString big = dir.filePath("big.png"), small = dir.filePath("small.png");
+        QImage picture(3000, 2000, QImage::Format_RGB32);
+        picture.fill(Qt::darkCyan);
+        QVERIFY(picture.save(big));
+        QVERIFY(picture.scaled(400, 300).save(small));
+        Thumbnails thumbnails(dir.filePath("cache/thumbnails"), {dir.filePath("none")});
+
+        bool fresh = false;
+        QDateTime read;
+        QImage image = thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
+        QVERIFY(fresh);
+        QCOMPARE(image.size(), QSize(1024, 682));
+        QCOMPARE(read, QFileInfo(big).lastModified());
+        thumbnails.keep(image, big, 1024, read);
+        const QString kept = dir.filePath("cache/folio/sharp/1024/") + Thumbnails::cacheKey(big).chopped(4) + ".jpg";
+        QVERIFY2(QFileInfo::exists(kept), qPrintable(kept));
+        // Only its owner may read it, and the folders it's in.
+        QCOMPARE(QFileInfo(kept).permissions() & (QFile::ReadGroup | QFile::ReadOther), QFileDevice::Permissions());
+        QCOMPARE(QFileInfo(QFileInfo(kept).absolutePath()).permissions() & (QFile::ReadOther | QFile::ExeOther), QFileDevice::Permissions());
+        // Kept under the time it was read at, not the file's time now: one
+        // saved over while it was read is made again.
+        QCOMPARE(QFileInfo(kept).lastModified(), read);
+        image = thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
+        QVERIFY(!fresh);
+        QCOMPARE(image.size(), QSize(1024, 682));
+
+        // Changed, it's made again.
+        {
+            QFile file(big);
+            QVERIFY(file.open(QIODevice::ReadWrite));
+            QVERIFY(file.setFileTime(QDateTime::currentDateTime().addSecs(60), QFileDevice::FileModificationTime));
+        }
+        thumbnails.sharp(big, "image/png", 1024, &fresh, &read);
+        QVERIFY(fresh);
+
+        image = thumbnails.sharp(small, "image/png", 1024, &fresh, &read);
+        QVERIFY(!fresh);
+        QCOMPARE(image.size(), QSize(400, 300));
+    }
+
     void thumbnailsFollowAPictureSavedOver()
     {
         // Qt keeps the images it has shown by their URL, and a re-read makes
@@ -6032,6 +6359,34 @@ private slots:
         Previewer previewer;
         previewer.start(dir.filePath("blob.txt"), false, "name");
         QTRY_COMPARE(previewer.viewer(), QString("other"));
+    }
+
+    // The preview window loads as the app loads it, its shortcuts with it.
+    void previewWindowLoads()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "hello\n");
+        Theme theme(dir.filePath("theme"));
+        Translator translator(dir.filePath("language"), dir.path());
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        Previewer previewer;
+        previewer.start(dir.filePath("notes.txt"), false, "name");
+        QQmlApplicationEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        QStringList problems;
+        QObject::connect(&engine, &QQmlApplicationEngine::warnings, [&](const QList<QQmlError> &warnings) {
+            for (const QQmlError &warning : warnings)
+                problems << warning.toString();
+        });
+        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(problems.join("\n")));
+        QObject *window = engine.rootObjects().first();
+        window->setProperty("helpVisible", true);
+        QCoreApplication::processEvents();
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.join("\n")));
     }
 
     void previewerShowsOnlyWhatLaysOutQuickly()
@@ -6239,6 +6594,7 @@ private slots:
                 width: 600; height: 480; visible: true
                 property alias cursor: folderView.currentIndex
                 %1 { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function letGo() { folderView.letGo() }
                 function cursorInView() {
                     const item = folderView.menuAnchor()
                     const y = item ? item.mapToItem(null, 0, 0).y : -1
@@ -6262,6 +6618,211 @@ private slots:
             QTRY_VERIFY(cursorInView());
         }
         QVERIFY(root->property("cursor").toInt() >= 29);
+
+        // Page Down moves a screenful (more than one row, keeping the
+        // cursor in sight), Page Up as far back, and both stop at the ends.
+        root->setProperty("cursor", 0);
+        QTRY_VERIFY(cursorInView());
+        const int before = 0;
+        QTest::keyClick(window, Qt::Key_PageDown);
+        const int paged = root->property("cursor").toInt() - before;
+        QVERIFY2(paged > 1, qPrintable(QString::number(paged)));
+        QTRY_VERIFY(cursorInView());
+        QCOMPARE(backend.folder()->selectedCount(), 1);
+        QTest::keyClick(window, Qt::Key_PageUp);
+        QCOMPARE(root->property("cursor").toInt(), before);
+        QTRY_VERIFY(cursorInView());
+        for (int i = 0; i < 80; ++i)
+            QTest::keyClick(window, Qt::Key_PageDown);
+        QCOMPARE(root->property("cursor").toInt(), 79);
+        // With Shift, it selects the way there.
+        QTest::keyClick(window, Qt::Key_PageUp, Qt::ShiftModifier);
+        QCOMPARE(backend.folder()->selectedCount(), paged + 1);
+        for (int i = 0; i < 80; ++i)
+            QTest::keyClick(window, Qt::Key_PageUp);
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTRY_VERIFY(cursorInView());
+
+        // Let go of (a click on empty space), Shift+Page Down selects from
+        // the first item on, and again keeps what it selected.
+        QMetaObject::invokeMethod(root.get(), "letGo");
+        QCOMPARE(root->property("cursor").toInt(), -1);
+        QTest::keyClick(window, Qt::Key_PageDown, Qt::ShiftModifier);
+        QTest::keyClick(window, Qt::Key_PageDown, Qt::ShiftModifier);
+        QCOMPARE(root->property("cursor").toInt(), 2 * paged);
+        QCOMPARE(backend.folder()->selectedCount(), 2 * paged + 1);
+    }
+
+    // The list's keys for its tree, as the Finder's: → opens a folder in
+    // place, then steps into it; ← steps back out to the folder, closes it,
+    // and from the top goes up a folder. A click on a folder's arrow opens
+    // or closes it.
+    void listWalksItsTree()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("files/alpha");
+        write(home.filePath("files/alpha/inside.txt"), "x");
+        write(home.filePath("files/beside.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 700; height: 300; visible: true
+                property alias cursor: folderView.currentIndex
+                FolderList { id: folderView; anchors.fill: parent; Component.onCompleted: focusView() }
+                function clickRow(row, modifiers) { folderView.itemAtIndex(row).clicked(modifiers) }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ListTreeTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        FolderModel *folder = backend.folder();
+        root->setProperty("cursor", 0);
+
+        QTest::keyClick(window, Qt::Key_Right);
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QVERIFY(folder->isExpanded(0));
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTest::keyClick(window, Qt::Key_Right);
+        QCOMPARE(root->property("cursor").toInt(), 1);
+        QCOMPARE(folder->get(1).value("name").toString(), QString("inside.txt"));
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(root->property("cursor").toInt(), 0);
+        QTest::keyClick(window, Qt::Key_Left);
+        QCOMPARE(folder->rowCount(), 2);
+        QVERIFY(!folder->isExpanded(0));
+        QCOMPARE(backend.path(), home.filePath("files"));
+
+        // The arrow, at the row's start, opens it too, without moving into it.
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(13, 16));
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QCOMPARE(backend.path(), home.filePath("files"));
+        QTest::qWait(200);
+        window->grabWindow().save(sourceFolder() + "/../build/tree.png");
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(13, 16));
+        QCOMPARE(folder->rowCount(), 2);
+
+        // From the top, ← goes up a folder, as before.
+        QTest::keyClick(window, Qt::Key_Left);
+        QTRY_COMPARE(backend.path(), home.path());
+
+        // Rows a folder opening lists above the cursor move its row, not
+        // the cursor: what's selected stays selected.
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(folder->rowCount(), 2);
+        root->setProperty("cursor", 1);
+        folder->selectRange(0, 1, false);
+        QCOMPARE(folder->selectedCount(), 2);
+        folder->setExpanded(0, true);
+        QTRY_COMPARE(folder->rowCount(), 3);
+        QCOMPARE(root->property("cursor").toInt(), 2);
+        QCOMPARE(folder->get(2).value("name").toString(), QString("beside.txt"));
+        QCOMPARE(folder->selectedCount(), 2);
+
+        // The range's start keeps to its own item too, though the folder
+        // opened between it and the cursor: a Shift-click then selects from
+        // it, not from where its row was.
+        folder->setExpanded(0, false);
+        QCOMPARE(folder->rowCount(), 2);
+        QDir(home.path()).mkpath("files/beta");
+        write(home.filePath("files/beta/in-beta.txt"), "x");
+        QTRY_COMPARE(folder->rowCount(), 3);
+        // alpha, beta, beside.txt: start on alpha, Shift-click beside.txt.
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 0), Q_ARG(QVariant, 0));
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 2), Q_ARG(QVariant, int(Qt::ShiftModifier)));
+        QCOMPARE(folder->selectedCount(), 3);
+        folder->setExpanded(1, true);
+        QTRY_COMPARE(folder->rowCount(), 4);
+        // alpha, beta, in-beta.txt, beside.txt: Shift-click in-beta.txt
+        // selects alpha through it.
+        QMetaObject::invokeMethod(root.get(), "clickRow", Q_ARG(QVariant, 2), Q_ARG(QVariant, int(Qt::ShiftModifier)));
+        QCOMPARE(folder->selectedCount(), 3);
+        QVERIFY(folder->isSelected(0));
+        QVERIFY(!folder->isSelected(3));
+    }
+
+    // Renamed inside a folder opened in the list's tree, an item stays
+    // selected under its new name, wherever that sorts it.
+    void listKeepsARenamedNestedItemSelected()
+    {
+        QTemporaryDir home, plugins;
+        QDir(home.path()).mkpath("files/alpha");
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(home.filePath(QString("files/alpha/") + name), "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        FileOps fileOps;
+        Plugins bundled("en", {plugins.path()}, home.filePath("folio.conf"));
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &bundled);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("places", &places);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            ApplicationWindow {
+                width: 900; height: 620; visible: true
+                property string viewMode: "list"
+                property real zoom: 1
+                property bool split: false
+                property bool helpVisible: false
+                property var activePane: null
+                function raise() {}
+                function requestActivate() {}
+                FolderPane { id: pane; anchors.fill: parent; focus: true }
+                Component.onCompleted: activePane = pane
+                readonly property var paneItem: pane
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/RenameNestedTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *pane = root->property("paneItem").value<QObject *>();
+        QVERIFY(pane);
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+        FolderModel *folder = backend.folder();
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(folder->count(), 1);
+        folder->setExpanded(0, true);
+        QTRY_COMPARE(folder->count(), 4);
+        const auto cursor = [&] { return pane->property("current").toMap().value("path").toString(); };
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_COMPARE(cursor(), home.filePath("files/alpha/a.txt"));
+
+        // a.txt renamed to z.txt sorts last: the cursor goes with it.
+        QCOMPARE(fileOps.rename(home.filePath("files/alpha/a.txt"), "z.txt"), QString());
+        QTRY_COMPARE_WITH_TIMEOUT(cursor(), home.filePath("files/alpha/z.txt"), 3000);
+        QCOMPARE(folder->get(folder->indexOfPath(home.filePath("files/alpha/z.txt"))).value("selected").toBool(), true);
+        QCOMPARE(folder->selectedCount(), 1);
     }
 
     void gridBandHitsTheTilesBothWays()
@@ -6993,24 +7554,37 @@ private slots:
         QQuickWindow *window = open(request);
         QVERIFY(window);
         QTRY_COMPARE(listed(window), QStringList({"sub", "b.png", "c.png"}));
-        // The details offer no way to open the file in its app instead. A
-        // chooser opens too narrow for them, so the window is widened.
-        window->setWidth(1100);
+        // The columns show a file's details as a column after it, and the
+        // details offer no way to open the file in its app instead.
+        const auto column = [&]() -> QQuickItem * {
+            QQuickItem *found = nullptr;
+            const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
+                if (!found && item->property("folderPane").isValid() && item->property("takesKeyboard").isValid())
+                    found = item;
+                for (QQuickItem *child : item->childItems())
+                    find(child);
+            };
+            find(window->contentItem());
+            return found;
+        };
+        // On the folder, there's what's inside it instead.
+        QVERIFY(!column());
+        QTest::keyClick(window, Qt::Key_Down);
+        QTRY_VERIFY(column() && column()->isVisible());
         {
             QQuickItem *open = nullptr;
             const std::function<void(QQuickItem *)> find = [&](QQuickItem *item) {
-                // The details' own labels: no other button says these.
+                // The details' own button: in them, no other says these.
                 const QString text = item->property("text").toString();
-                if (!open && (text == "Open folder" || text.startsWith("Open with ")))
+                if (!open && (text == "Open" || text.startsWith("Open with ")))
                     open = item;
                 for (QQuickItem *child : item->childItems())
                     find(child);
             };
-            QTRY_VERIFY((find(window->contentItem()), open));
+            QTRY_VERIFY((find(column()), open));
             QVERIFY(!open->isVisible());
         }
         QPointer<QQuickWindow> closing(window);
-        QTest::keyClick(window, Qt::Key_Down);
         QTest::keyClick(window, Qt::Key_Return);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{0, {uri("b.png")}}}));
         QTRY_VERIFY(!closing);

@@ -2,7 +2,7 @@
 
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
-in the details pane, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
+in the details column, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
 Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 
@@ -137,7 +137,7 @@ FOLIO_PLUGIN_DIR=$PWD FOLIO_LANGUAGE=en ./servers | jq .
 ## An example with menu entries and details
 
 This plugin adds Copy Git Link to the right-click menu of files in your
-repositories on GitHub, and shows in the details pane the branch a
+repositories on GitHub, and shows in the details column the branch a
 repository is on and the last commit that changed the file. It has no poll:
 what it offers is worked out for the file at hand.
 
@@ -164,7 +164,7 @@ what it offers is worked out for the file at hand.
 }
 ```
 
-`details`, which Folio runs with the file or folder the details pane shows:
+`details`, which Folio runs with the file the details column shows:
 
 ```sh
 #!/bin/sh
@@ -226,7 +226,7 @@ Unknown keys are ignored, so a manifest written for a later Folio still loads.
 | `section` | A sidebar section of the plugin's items (see [The sidebar section](#the-sidebar-section)). |
 | `view` | A view of all the plugin's items in the main pane (see [The view](#the-view)). |
 | `actions` | Entries in the right-click menu, in the menu itself or under Share (see [Actions](#actions)). |
-| `details` | Rows in the details pane about a file or folder (see [Details](#details)). |
+| `details` | Rows in the details column about a file (see [Details](#details)). |
 
 ## Running commands
 
@@ -255,7 +255,7 @@ How long a command may take depends on what it's for:
 
 - A **poll** has 10 seconds. One that takes longer is killed and counts as
   failed.
-- A **details** command has 2 seconds, since the details pane waits for it.
+- A **details** command has 2 seconds, since the details column waits for it.
   One that takes longer is killed and shows nothing.
 - An **action** or an item's **run** command is work you asked for
   (sending a big file takes as long as it takes), so it has no time limit.
@@ -326,7 +326,7 @@ listed. They fill its section, its view and its submenus.
 | `name` | Required. Shown as it is, never translated. |
 | `icon` | See [Icons](#icons). Defaults to `file`. |
 | `subtitle` | One short line: under the name on a tile, in the size column of the list, and in the details. Translated. |
-| `details` | Rows for the details pane, each `[label, value]`; the label is translated, the value isn't. |
+| `details` | Rows for the details column, each `[label, value]`; the label is translated, the value isn't. |
 | `open` | What opening it does (see [Opening an item](#opening-an-item)). An item without one is only a target in its plugin's submenus. |
 
 **`places`** puts a status, or another icon, on sidebar rows Folio already
@@ -385,8 +385,9 @@ shown when there are no items. It follows the polls, so items come and go
 while you look at it.
 
 Items show in the grid, list and columns layouts with their icon, name and
-subtitle, in the plugin's order (the sort menu doesn't apply), and the
-details pane shows the item's details. / searches their names. ⏎, a double
+subtitle, in the plugin's order (the sort menu doesn't apply), and in
+the columns layout, the details column after a selected item shows its
+details. / searches their names. ⏎, a double
 click or Open in the right-click menu opens one; there's nothing to copy,
 rename, pin or preview in a view, so those are left out.
 
@@ -460,7 +461,8 @@ label ("Taildrop: no such peer").
 "details": { "command": ["./filestatus"], "under": ["~/Dropbox/"] }
 ```
 
-When the details pane shows a file or folder (a real one: not in the trash,
+The columns layout shows a selected file's details in a column after it.
+When that column shows a file (a real one: not in the trash,
 nor a plugin's item) that's inside `under` and of one of the `types`, both
 as for [actions](#actions) and both optional, Folio runs `command` with its
 path as the last argument. The command prints a JSON array of rows, each
@@ -549,7 +551,7 @@ Linux, macOS or Windows machine as the item shown under [Polling](#polling);
 `send` runs `tailscale file cp "$@" "$FOLIO_TARGET:"`.
 
 **dropbox** marks the Dropbox folder in Home with Dropbox's mark and its sync
-status, gets share links, and says in the details pane how a file in it
+status, gets share links, and says in the details column how a file in it
 stands.
 
 ```json

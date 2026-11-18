@@ -17,10 +17,11 @@ FocusScope {
     readonly property var paneFileOps: fileOps
     property bool closable: false
     signal closeRequested()
-    // How far this pane's path bar reaches right, over the details column,
-    // so the rightmost pane's buttons sit at the window's edge.
-    property int barExtension: 0
+    // How far this pane's path bar reaches left, over the sidebar, so the
+    // first pane's path starts at the window's edge.
     property int barLeft: 0
+    // The columns' details column, while it shows a file, for Tab to reach.
+    readonly property var details: view.item && view.item.details ? view.item.details : null
 
     // Each pane has its own view. The window's own pane is the one
     // remembered between launches; the right pane of a split starts with
@@ -37,7 +38,7 @@ FocusScope {
         zoom = zoomSteps[Math.max(0, Math.min(zoomSteps.length - 1, (at < 0 ? 1 : at) + step))]
     }
     function cycleView() {
-        viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
+        viewMode = viewMode === "columns" ? "list" : viewMode === "list" ? "grid" : "columns"
     }
 
     // The cursor's item, carried across a switch of view and a re-read of
@@ -62,12 +63,16 @@ FocusScope {
     // have it, not while Tab has put it in the sidebar or the details, where
     // Delete or Space would act on files out of the keyboard's sight.
     readonly property bool paneKeys: active && !typing
-    readonly property bool keys: paneKeys && activeFocus
+    // The details column is inside the pane, so the pane keeps the keyboard
+    // while Tab has put it there.
+    readonly property bool keys: paneKeys && activeFocus && !(details && details.hasKeyboard)
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
     function selectedPaths() {
         return backend.folder.selectedCount > 0 ? backend.folder.selectedPaths() : (current.path ? [current.path] : [])
     }
+    // The cursor's row, for the details to read the files beside it ahead.
+    readonly property int currentIndex: view.item ? view.item.currentIndex : -1
     readonly property var current: {
         // Re-read when the folder changes underneath the selection.
         backend.folder.count
@@ -126,10 +131,14 @@ FocusScope {
                     qsTr("Burn"), () => fileOps.burn(path, drive.id), true)
     }
 
-    // Whichever pane has the keyboard is the one keys, the sidebar and the
-    // details pane follow.
+    // Whichever pane has the keyboard is the one keys and the sidebar
+    // follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // Rename… in a sidebar folder's menu.
+    function renameFolder(path) { rename.open({ path: path, isDir: true }) }
+    // A place picked in the sidebar: the columns start at it.
+    function startAt(path) { if (view.item && view.item.startAt) view.item.startAt(path) }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
@@ -191,9 +200,9 @@ FocusScope {
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inView; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
-    Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
+    Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
-    Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
+    Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
     Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
     Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
@@ -257,9 +266,26 @@ FocusScope {
 
     Connections {
         target: fileOps
+        // A pinned folder's pin, or a folder hidden from Home, follows it
+        // through a rename, and through undoing and redoing one.
+        function onRenamed(from, to) { places.renamed(from, to) }
         function onDone(folder, name) {
-            if (folder !== backend.path)
+            // Done inside a folder opened in place (the list's tree): its
+            // item is found by its whole path, now or once the folder's
+            // been read again.
+            if (folder !== backend.path) {
+                if (!backend.folder.expandable || !folder.startsWith(backend.path + "/"))
+                    return
+                const path = folder + "/" + name
+                const inside = backend.folder.indexOfPath(path)
+                if (inside >= 0 && view.item) {
+                    view.item.select(inside, false)
+                } else {
+                    pane.lastPath = path
+                    pane.cursorLetGo = false
+                }
                 return
+            }
             const row = backend.folder.indexOf(name)
             if (row >= 0 && view.item)
                 view.item.select(row, false)
@@ -268,6 +294,9 @@ FocusScope {
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
+        // Work done (a folder of home's trashed, say) shows in the sidebar
+        // at once, not at its next look in 15 seconds.
+        function onBusyChanged() { if (!fileOps.busy) places.refresh() }
         // A drive about to be formatted or burned is left first, by every
         // pane, and the sidebar shows it as it is afterwards.
         function onReleasing(root) { places.leave(root) }
@@ -336,7 +365,7 @@ FocusScope {
         spacing: 0
 
         // Room for the path bar, which is drawn on top so it can reach over
-        // the details column.
+        // the sidebar.
         Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight }
         // Work that ends within a second, as most deletes and copies do,
         // never flashes the banner: what's under way shows once it has
@@ -408,7 +437,7 @@ FocusScope {
 
         Item { implicitHeight: 16 }
 
-        // Grid, list or columns: each takes the folder's model and keeps the
+        // Columns, list or grid: each takes the folder's model and keeps the
         // pane's one selection.
         Loader {
             id: view
@@ -440,25 +469,25 @@ FocusScope {
         }
         Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
         Component { id: listView; FolderList { } }
-        Component { id: columnsView; FolderColumns { } }
+        Component { id: columnsView; FolderColumns { detailsPane: pane } }
     }
 
     // Drawn over the window's top bar. It reaches back over the sidebar for
-    // the first pane (so the path starts at the window's edge) and on over
-    // the details column for the last one (so the buttons end at the edge).
-    // Mirrored, the sidebar is on the right and the details on the left.
+    // the first pane, so the path starts at the window's edge. Mirrored,
+    // the sidebar is on the right.
     PathBar {
         id: pathBar
-        x: LayoutMirroring.enabled ? -pane.barExtension : -pane.barLeft
-        width: pane.barLeft + pane.width + pane.barExtension
+        x: LayoutMirroring.enabled ? 0 : -pane.barLeft
+        width: pane.barLeft + pane.width
         onEditDone: pane.focusView()
-        previewVisible: pane.host ? pane.host.previewVisible : true
-        previewFits: pane.host ? pane.host.detailsFit : true
         viewMode: pane.viewMode
         closable: pane.closable
-        onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onCycleView: pane.cycleView()
         onCloseRequested: pane.closeRequested()
+        // On the rightmost pane's bar. A file chooser is a dialog, not the
+        // place to learn Files' keys.
+        showsHelp: !chooser && !!pane.host && (pane.closable || !pane.host.split)
+        onHelpRequested: if (pane.host) pane.host.helpVisible = !pane.host.helpVisible
     }
 
     // With two panes, a line along the top marks the one keys go to.

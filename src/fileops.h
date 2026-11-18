@@ -89,6 +89,7 @@ public:
     // plain text, so pasting into a terminal or editor gives the path.
     // Whether Shift is held right now, for menus that change with it.
     Q_INVOKABLE static bool shiftHeld();
+    Q_INVOKABLE static bool altHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);
@@ -277,6 +278,9 @@ signals:
     void drivesChanged();
     // Work finished in `folder`, which now holds `name` (to select it).
     void done(const QString &folder, const QString &name);
+    // An item renamed from `from` to `to`, by Rename or by undoing or
+    // redoing one, for the sidebar's pins and hidden folders to follow.
+    void renamed(const QString &from, const QString &to);
 
 private:
     void setBusy(const QString &busy);

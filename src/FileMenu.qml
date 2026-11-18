@@ -39,7 +39,7 @@ FolioMenu {
     // A selected item in the folder being shown stands for the whole
     // selection, so Copy, Compress or Delete act on all of it.
     readonly property bool forSelection: forItem && target.selected === true && backend.folder.selectedCount > 1
-                                         && backend.folder.indexOf(target.name) >= 0
+                                         && backend.folder.indexOfPath(target.path) >= 0
     readonly property var paths: !forItem ? [] : forSelection ? backend.folder.selectedPaths() : [target.path]
     // One disk image, and the drives it could be burned to, asked of udisks
     // as the menu opens rather than on every binding.
@@ -138,6 +138,12 @@ FolioMenu {
         text: fileMenu.forFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
         keys: "Ctrl+P"
         onTriggered: fileMenu.pinRequested(fileMenu.target.path)
+    }
+    // A folder of home's hidden from its sidebar section goes back there.
+    FolioMenuItem {
+        shown: fileMenu.forFolder && places.hiddenFromHome(fileMenu.target.path)
+        text: qsTr("Show in Home")
+        onTriggered: places.showInHome(fileMenu.target.path)
     }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     FolioMenuItem {

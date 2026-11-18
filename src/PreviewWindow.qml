@@ -181,16 +181,16 @@ ApplicationWindow {
             anchors.fill: parent
             visible: win.helpVisible
             onDismissed: win.helpVisible = false
-            shortcuts: [
-                [win.rtl ? "→ / ←" : "← / →", qsTr("Previous / next file")],
-                ["⏎", qsTr("Open in its app")],
-                ["↑ ↓ PgUp PgDn", qsTr("Scroll")],
-                ["Ctrl+= / Ctrl+-", qsTr("Zoom in / out")],
-                ["Ctrl+0", qsTr("Fit to the window")],
-                ["K", qsTr("Play or pause")],
-                ["Shift+← / Shift+→", qsTr("Back / ahead 5 seconds")],
-                ["Space / Esc", qsTr("Close")]
-            ]
+            groups: [{ title: qsTr("Preview"), shortcuts: [
+                [qsTr("Previous / next file"), win.rtl ? [["→"], ["←"]] : [["←"], ["→"]]],
+                [qsTr("Open in its app"), [["⏎"]]],
+                [qsTr("Scroll"), [["↑", "↓"], ["Page Up"], ["Page Down"]]],
+                [qsTr("Zoom in / out"), [["Ctrl", "="], ["Ctrl", "-"]]],
+                [qsTr("Fit to the window"), [["Ctrl", "0"]]],
+                [qsTr("Play or pause"), [["K"]]],
+                [qsTr("Back / ahead 5 seconds"), [["Shift", "←"], ["Shift", "→"]]],
+                [qsTr("Close"), [["Space"], ["Escape"]]]
+            ]}]
         }
     }
 

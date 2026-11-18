@@ -1,15 +1,16 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import "Format.js" as Format
 
-// A larger look at the selected item and the facts about it, with the one
-// action that matters: open it.
+// A larger look at the selected file and the facts about it, with the one
+// action that matters: open it. The last of the columns, after the file.
 Rectangle {
     id: pane
 
     // The pane whose selected item this shows, and whose backend and file
-    // work the button acts through: in a split, the one used last.
+    // work the button acts through.
     property var folderPane: null
     // Hidden, it shows nothing, so moving through files doesn't read them,
     // look for their trash notes or make large thumbnails for nobody.
@@ -48,10 +49,17 @@ Rectangle {
     // and describing that would drop what's been read of this one.
     onItemChanged: Qt.callLater(describe)
     function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
+    // Gone (a folder selected, or another view), it describes nothing, so
+    // plugins stop being asked about the file it showed last.
+    Component.onDestruction: backend.describe({}, false)
 
-    color: theme.darkBackground
-
-    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Qt.alpha(theme.foreground, 0.12) }
+    // It sits on the columns' background, and their separator marks its
+    // edge.
+    color: "transparent"
+    // It takes all the room right of the columns. The facts and the button
+    // keep to a width that still reads as one block, centered under the
+    // picture.
+    readonly property int textWidth: 480
 
     ColumnLayout {
         anchors.fill: parent
@@ -59,16 +67,84 @@ Rectangle {
         spacing: 22
         visible: pane.hasItem
 
+        // The picture grows with the room, short of crowding out the facts.
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(width * 0.75)
+            Layout.preferredHeight: Math.round(Math.min(width * 0.75, pane.height * 0.55))
 
+            // Moving quickly through files, each shows at once the small
+            // thumbnail its row has already made (soft, but instant), and
+            // the sharp picture once the cursor rests on it, or at once when
+            // it was read ahead: resting on a file reads the ones beside it
+            // too, so stepping through a folder finds each one ready. The
+            // slow work (a large picture read, a video's frame made) is never
+            // started for files only passed over.
+            Image {
+                id: quick
+                anchors.fill: parent
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+                source: big.shown ? Format.thumb(pane.item.path, pane.item.mime, 128, pane.item.modified) : ""
+                visible: status === Image.Ready && !big.visible
+            }
+            Timer {
+                id: rest
+                interval: 120
+                onTriggered: big.rest()
+            }
+            Connections {
+                target: pane
+                // The same file again (its folder re-read) stays as it is.
+                function onItemChanged() { if (!pane.hasItem || pane.item.path !== big.rested) rest.restart() }
+            }
+            // The files beside the one rested on, read ahead out of sight.
+            Repeater {
+                model: big.ahead
+                Image {
+                    required property var modelData
+                    visible: false
+                    asynchronous: true
+                    source: big.sourceFor(modelData)
+                }
+            }
             Image {
                 id: big
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                // As many pixels as it's drawn with, in steps, so resizing
+                // the window doesn't read it again at every width.
+                readonly property int pixels: Math.min(8192, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 512) * 512)
+                readonly property bool shown: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem
+                // The file the cursor last rested on, and those read ahead.
+                property string rested: ""
+                property var ahead: []
+                function rest() {
+                    rested = pane.hasItem ? pane.item.path : ""
+                    const folder = pane.folderPane ? pane.folderPane.paneBackend.folder : null
+                    const at = pane.folderPane ? pane.folderPane.currentIndex : -1
+                    const near = []
+                    if (folder && at >= 0)
+                        for (const index of [at + 1, at - 1])
+                            if (index >= 0 && index < folder.count) {
+                                const item = folder.get(index)
+                                if (!item.isDir && (item.kind === "image" || item.kind === "video" || item.kind === "pdf"))
+                                    near.push(item)
+                            }
+                    ahead = near
+                }
+                readonly property bool ready: shown && (rested === pane.item.path || ahead.some(item => item.path === pane.item.path))
+                // A picture as sharp as the column is wide (one Qt can't
+                // read, HEIC, gets the largest thumbnail); anything else the
+                // largest thumbnail there is (1024 pixels: a video's frame, a
+                // PDF's first page).
+                function sourceFor(item) {
+                    return item.kind === "image" ? Format.sharp(item.path, item.mime, pixels, item.modified)
+                                                 : Format.thumb(item.path, item.mime, 1024, item.modified)
+                }
+                // Gave up: no picture of it to be had.
+                readonly property bool failed: status === Image.Error
+                source: ready ? sourceFor(pane.item) : ""
                 visible: status === Image.Ready
             }
 
@@ -92,9 +168,13 @@ Rectangle {
                 }
             }
 
+            // Only for what has no picture: while one's on its way (moving
+            // quickly through files) the space stays empty rather than
+            // flashing the icon.
             Glyph {
                 anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
+                visible: pane.hasItem && pane.item.kind !== "text"
+                         && (!big.shown || (big.failed && quick.status !== Image.Ready))
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
@@ -105,6 +185,8 @@ Rectangle {
         ColumnLayout {
             spacing: 4
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             // Aligned explicitly, so that they're mirrored: left as they
             // are, a Latin name would stay on the left.
             Text {
@@ -133,6 +215,8 @@ Rectangle {
 
         GridLayout {
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             columns: 2
             rowSpacing: 12
             columnSpacing: 16
@@ -147,6 +231,19 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
+            // When it was made, where the filesystem keeps that.
+            Text { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !!pane.info.created
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: {
+                    translator.language // Re-read when the language (and so the default locale) changes.
+                    return pane.info.created ? Format.stamp(pane.info.created) : ""
+                }
+                color: theme.foreground
+                font.pixelSize: 12
+            }
             Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: !pane.pluginItem
@@ -155,7 +252,7 @@ Rectangle {
                 text: {
                     translator.language // Re-read when the language (and so the default locale) changes.
                     const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
-                    return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
+                    return pane.hasItem && when ? Format.stamp(when) : ""
                 }
                 color: theme.foreground
                 font.pixelSize: 12
@@ -190,13 +287,16 @@ Rectangle {
                 Layout.alignment: Qt.AlignRight
                 implicitHeight: 28
                 text: (current ? current.name : qsTr("Choose")) + "  ▾"
-                onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                // A second click closes it again.
+                onClicked: appsMenu.visible ? appsMenu.close() : appsMenu.popup(opensWith, 0, opensWith.height + 4)
                 Keys.onEscapePressed: pane.finished()
                 // Gone with the keyboard on it (another item selected, or the
                 // details hidden), it hands the keyboard back.
                 onVisibleChanged: if (!visible && activeFocus) pane.finished()
                 FolioMenu {
                     id: appsMenu
+                    // A press on the button is left to its click, which closes it.
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     Repeater {
                         model: opensWith.apps
                         FolioMenuItem {
@@ -246,6 +346,8 @@ Rectangle {
             // A file chooser answers from its own bar, not by opening.
             visible: !chooser
             Layout.fillWidth: true
+            Layout.maximumWidth: pane.textWidth
+            Layout.alignment: Qt.AlignHCenter
             implicitHeight: 40
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
@@ -271,12 +373,5 @@ Rectangle {
                 Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }
-    }
-
-    Text {
-        anchors.centerIn: parent
-        visible: !pane.hasItem
-        text: qsTr("Nothing selected")
-        color: theme.secondaryForeground
     }
 }

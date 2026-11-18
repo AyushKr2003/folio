@@ -35,6 +35,10 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QVariantList items READ items WRITE setItems NOTIFY itemsChanged)
     // A file chooser's filter: only files that fit it are listed (see fits()).
     Q_PROPERTY(QStringList filter READ filter WRITE setFilter NOTIFY filterChanged)
+    // Whether folders here can be opened in place, as a tree (the list
+    // view's): in a folder, not a search, Recents, the trash or a plugin's
+    // view.
+    Q_PROPERTY(bool expandable READ expandable NOTIFY expandableChanged)
 
 public:
     enum Role {
@@ -49,6 +53,8 @@ public:
         ItemCountRole,
         SelectedRole,
         IconRole,
+        DepthRole,
+        ExpandedRole,
     };
 
     struct Entry {
@@ -61,12 +67,15 @@ public:
         QString mime;
         // A file's extension; a plugin item's subtitle.
         QString extension;
-        // A plugin item's glyph and its rows for the details pane.
+        // A plugin item's glyph and its rows for the details column.
         QString icon;
         QVariantList details;
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
         QStringList peek;
+        // How deep in the tree: 0 for the folder's own items, 1 for those of
+        // a folder opened in place under them, and so on.
+        int depth = 0;
     };
 
     explicit FolderModel(QObject *parent = nullptr);
@@ -112,6 +121,20 @@ public:
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE bool isSelected(int row) const;
     Q_INVOKABLE QStringList selectedPaths() const;
+
+    // The tree: a folder opened in place lists its items right under it, a
+    // level deeper, read in the background; closed, they go, and so does
+    // any folder opened inside it. Rows keep being rows, so selecting,
+    // file work and the cursor treat them as any other. Going to another
+    // folder closes them all.
+    bool expandable() const;
+    Q_INVOKABLE void setExpanded(int row, bool expanded);
+    Q_INVOKABLE bool isExpanded(int row) const;
+    Q_INVOKABLE void collapseAll();
+    // The row of the folder `row` is listed under, or -1 at the top.
+    Q_INVOKABLE int parentRow(int row) const;
+    // A folder's items with the open folders' own under them, `depth` deep.
+    static QVector<Entry> flatten(const QVector<Entry> &entries, const QHash<QString, QVector<Entry>> &open, int depth = 0);
 
     // Listings run here, not on the global pool, so folder counts and file
     // transfers can't hold up the folder just opened.
@@ -177,6 +200,10 @@ signals:
     void filterChanged();
     void selectionChanged();
     void loaded();
+    void expandableChanged();
+    // A folder opened in place couldn't be read (or read again), and was
+    // closed: `message` says which, and why.
+    void expandFailed(const QString &message);
 
 private:
     void setLoading(bool loading);
@@ -191,6 +218,17 @@ private:
     QString m_path;
     QVector<Entry> m_entries;
     QSet<QString> m_selected;
+    // The folders opened in place, by path, and what each was last read to
+    // hold. One just opened is in m_expanded until its listing arrives.
+    QSet<QString> m_expanded;
+    QHash<QString, QVector<Entry>> m_open;
+    // Each opening's own number, while it's read, so a reading from before
+    // the folder was closed and opened again is dropped.
+    QHash<QString, quint64> m_opening;
+    quint64 m_openings = 0;
+    // Closes a folder that couldn't be read, saying why.
+    void failExpanded(const QString &folder, const QString &error);
+    void forgetExpanded();
     void setSelected(const QSet<QString> &paths);
     bool m_loading = false;
     QString m_error;

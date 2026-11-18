@@ -11,12 +11,15 @@ Item {
 
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
+    // The pane whose selected file the details column describes.
+    property var detailsPane: null
+    readonly property var details: detailsColumn.item
 
     function select(row, keep) { selecting.select(row, keep) }
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
 
-    Selecting { id: selecting; view: here }
+    Selecting { id: selecting; view: here; pageStep: Math.max(1, Math.floor(here.height / 32) - 1) }
     function focusView() { here.forceActiveFocus() }
     function menuAnchor() { return here.currentItem }
 
@@ -30,6 +33,22 @@ Item {
     // column, and the rest stay as they are instead of reloading (which
     // flashed).
     ListModel { id: trail }
+    // How many of the folders on the way here are scrolled out of sight to
+    // the left: a place picked in the sidebar is the first column shown,
+    // with the folders above it there to scroll back to. Going up past it
+    // shows what's above again.
+    property int hidden: 0
+    property string startingAt: ""
+    function startAt(path) {
+        startingAt = path
+        if (backend.path === path)
+            started()
+    }
+    function started() {
+        startingAt = ""
+        hidden = trail.count
+        revealEnd()
+    }
     function syncTrail() {
         const want = []
         for (let i = 0; i + 1 < crumbs.length; ++i)
@@ -37,6 +56,9 @@ Item {
         let same = 0
         while (same < trail.count && same < want.length && trail.get(same).path === want[same].path)
             ++same
+        // Somewhere else altogether (another drive, /) starts from its top.
+        if (same === 0)
+            hidden = 0
         // Columns that stay may now point at a different next folder.
         for (let i = 0; i < same; ++i)
             if (trail.get(i).next !== want[i].next)
@@ -45,14 +67,24 @@ Item {
             trail.remove(same, trail.count - same)
         for (let i = same; i < want.length; ++i)
             trail.append(want[i])
+        hidden = Math.min(hidden, trail.count)
+        if (startingAt.length > 0 && backend.path === startingAt)
+            started()
     }
     onCrumbsChanged: syncTrail()
     Component.onCompleted: syncTrail()
     readonly property var selected: here.currentIndex >= 0 ? (backend.folder.count, backend.folder.get(here.currentIndex)) : ({})
 
-    // Keeps the newest columns in view as the trail grows: on the left,
-    // when mirrored.
-    function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
+    // Where the first column shown starts, from the side the columns grow
+    // from: past the hidden ones and their separators.
+    readonly property int hiddenWidth: hidden * (columnWidth + 1)
+    // Keeps the newest columns in view as the trail grows, and the hidden
+    // ones out of it: on the left, when mirrored.
+    function revealEnd() {
+        const from = Math.max(view.hiddenWidth, row.width - flick.width)
+        const most = Math.max(0, flick.contentWidth - flick.width)
+        flick.contentX = view.LayoutMirroring.enabled ? most - from : from
+    }
     LayoutMirroring.onEnabledChanged: revealEnd()
     function enter() {
         if (view.selected.isDir && (insideFolder.loading || insideFolder.count > 0 || insideFolder.error.length > 0))
@@ -70,7 +102,9 @@ Item {
         anchors.fill: parent
         clip: true
         acceptedButtons: Qt.NoButton
-        contentWidth: Math.max(width, row.width)
+        // Room to scroll the hidden columns out of sight even when the rest
+        // would fit.
+        contentWidth: Math.max(width, row.width, view.hiddenWidth + width)
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
         onContentWidthChanged: view.revealEnd()
@@ -156,7 +190,7 @@ Item {
                 ColumnDrop { items: here; folder: backend.path }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
-                Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
+                Keys.onPressed: (event) => selecting.page(event) || selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
                 // Into a folder is the way the columns grow: leftward, when
                 // mirrored.
                 Keys.onRightPressed: view.LayoutMirroring.enabled ? backend.goUp() : view.enter()
@@ -219,6 +253,22 @@ Item {
                     visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("No items")
                     color: theme.secondaryForeground
+                }
+            }
+
+            // The selected file's details, where a folder would show what's
+            // inside, filling the rest of the width.
+            Loader {
+                id: detailsColumn
+                active: !!view.detailsPane && view.selected.path !== undefined && view.selected.isDir !== true
+                visible: active
+                sourceComponent: PreviewPane {
+                    // All the room right of the columns in sight, and no
+                    // narrower than it reads well.
+                    width: Math.max(300, flick.width - (trail.count - view.hidden + 1) * (view.columnWidth + 1))
+                    height: row.height
+                    folderPane: view.detailsPane
+                    onFinished: view.focusView()
                 }
             }
         }

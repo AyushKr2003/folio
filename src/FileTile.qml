@@ -123,7 +123,9 @@ Item {
         id: hover
         // The picture that follows the pointer while dragging; taken ahead
         // of time because a drag can't wait for it.
-        onHoveredChanged: if (hovered) art.grabToImage(result => tile.Drag.imageSource = result.url)
+        // Cleared first: Qt (6.12) reloads a new picture at the size of the
+        // one before, which for a grab only warns ("Ignoring sourceSize").
+        onHoveredChanged: if (hovered) art.grabToImage(result => { tile.Drag.imageSource = ""; tile.Drag.imageSource = result.url })
     }
 
     // Dragging hands the file to whatever it lands on as a URI list: the
@@ -270,26 +272,24 @@ Item {
         }
     }
 
+    // Hovered, a plugin's icon brightens: to the theme's bright color, or,
+    // in a theme without one apart from its text's, a touch of the accent.
+    readonly property color hoverColor: Qt.colorEqual(theme.brightForeground, theme.foreground)
+                                        ? Qt.tint(theme.foreground, Qt.alpha(theme.accent, 0.35)) : theme.brightForeground
+
     Component {
         id: itemArt
 
+        // A plugin's item is only its icon, so selecting it colors the icon
+        // (and the name) rather than framing it: a frame would box in
+        // empty space.
         Item {
             Glyph {
-                id: computer
                 anchors.centerIn: parent
                 name: tile.icon
                 size: 76
                 stroke: 1.2
-                color: tile.current ? theme.accent : theme.foreground
-            }
-            Rectangle {
-                visible: tile.current || hover.hovered
-                anchors.fill: computer
-                anchors.margins: -3
-                color: "transparent"
-                border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
-                radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
+                color: tile.current ? theme.accent : hover.hovered ? tile.hoverColor : theme.foreground
             }
         }
     }

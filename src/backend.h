@@ -27,7 +27,7 @@ class Backend : public QObject {
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
-    // What the details pane shows beyond the listing, for the item last
+    // What the details column shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
     // picture's dimensions, a text's opening lines, or a trashed item's
     // origin and deletion time; and under `plugins`, plugins' rows about a

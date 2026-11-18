@@ -1,10 +1,10 @@
 # Files
 
-![Files showing a folder of photos in the grid, with the details pane](docs/grid.png)
+![Files showing a folder of photos in the grid](docs/grid.png)
 
 Files (`folio`) is Omarchy's file manager. It's one quiet window that follows your Omarchy theme and language, works from the keyboard, and never crawls your home folder in the background: folders are read when you open them, and thumbnails are made when a tile needs one, shared with every other app through `~/.cache/thumbnails`.
 
-- **Three views**: a grid with real previews, a list, and Finder-style columns. Ctrl+1/2/3 switches.
+- **Three views**: Finder-style columns, a list that opens folders in place as a tree, and a grid with real previews. Ctrl+1/2/3 switches.
 - **Space previews** pictures, video, audio, PDFs, text and Markdown at full size, in their own window.
 - **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives (mounted or not, as Nautilus lists them: a click mounts one, and a drive plugged in mounts by itself), and the machines on your tailnet, which open over SFTP.
 - **Right-click** (or Alt+Enter) to open with another app, rename, duplicate, compress, share by Dropbox link, Taildrop or LocalSend, and delete. Copy and paste work with other apps, and nothing is ever overwritten.

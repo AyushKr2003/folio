@@ -504,7 +504,9 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // a plugin's own items.
     m_pluginItem = path.startsWith('/') && !inTrash ? item : QVariantMap();
     showPluginRows(askPlugins());
-    if (kind != "image" && kind != "text" && !inTrash)
+    // Every real file and folder has a creation time to read; a plugin's
+    // item has none.
+    if (!path.startsWith('/'))
         return;
 
     // Reading the file waits on its disk, which for a slow mount would hold
@@ -528,6 +530,10 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         if (inTrash) {
             read.insert("origin", FileOps::originalPath(path));
             read.insert("deleted", FileOps::deletedAt(path));
+        } else if (const QDateTime born = QFileInfo(path).birthTime(); born.isValid()) {
+            // When the filesystem keeps it (ext4, btrfs, xfs do; some network
+            // shares don't, and then there's no Created).
+            read.insert("created", born);
         }
         if (kind == "image") {
             QImageReader reader(path);

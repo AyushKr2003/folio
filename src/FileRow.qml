@@ -20,15 +20,21 @@ Item {
     required property int itemCount
     required property string icon
     required property bool selected
+    required property int depth
+    required property bool expanded
 
     property bool current: false
     // In a column to the left: the folder the next column is showing.
     property bool trail: false
     property bool detailed: false
     property bool chevron: false
+    // In the list, a tree: each level indented, and a folder's arrow opens
+    // it in place (or closes it).
+    property bool tree: false
 
     signal clicked(int modifiers)
     signal activated()
+    signal toggled()
 
     implicitHeight: 32
 
@@ -71,9 +77,33 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 14
+        anchors.leftMargin: row.tree ? 4 + row.depth * 20 : 14
         anchors.rightMargin: 14
         spacing: 12
+
+        // The folder's arrow: pointing on (with the reading direction)
+        // while it's closed, down while it's open.
+        Item {
+            visible: row.tree
+            Layout.rightMargin: -8
+            implicitWidth: 18
+            implicitHeight: 32
+            Glyph {
+                visible: row.isDir
+                anchors.centerIn: parent
+                name: row.LayoutMirroring.enabled ? "back" : "forward"
+                size: 12
+                rotation: row.expanded ? (row.LayoutMirroring.enabled ? -90 : 90) : 0
+                color: arrowHover.hovered ? theme.foreground : theme.secondaryForeground
+            }
+            HoverHandler { id: arrowHover; enabled: row.isDir }
+            TapHandler {
+                enabled: row.isDir
+                // Before the row's own tap, which would select it instead.
+                grabPermissions: PointerHandler.CanTakeOverFromAnything
+                onTapped: row.toggled()
+            }
+        }
 
         Item {
             implicitWidth: 20
@@ -89,8 +119,12 @@ Item {
                     maskSpreadAtMin: 1
                 }
                 asynchronous: true
-                fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
+                // Pictures fill the square; a page (a PDF's) shows whole.
+                fillMode: row.kind === "image" || row.kind === "video" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                // A small picture of any file there's one of, as the tiles
+                // have; a text's opening lines would be unreadable this
+                // small, and folders and plugins' items keep their glyph.
+                source: row.isDir || row.kind === "item" || row.kind === "text" ? "" : Format.thumb(row.path, row.mime, 128, row.modified)
                 visible: status === Image.Ready
             }
             Rectangle {
@@ -152,7 +186,9 @@ Item {
 
     HoverHandler {
         id: hover
-        onHoveredChanged: if (hovered) row.grabToImage(result => row.Drag.imageSource = result.url)
+        // Cleared first: Qt (6.12) reloads a new picture at the size of the
+        // one before, which for a grab only warns ("Ignoring sourceSize").
+        onHoveredChanged: if (hovered) row.grabToImage(result => { row.Drag.imageSource = ""; row.Drag.imageSource = result.url })
     }
     TapHandler {
         id: tap

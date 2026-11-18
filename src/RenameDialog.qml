@@ -28,8 +28,9 @@ FolioDialog {
     function close() { item = null }
     function submit() {
         problem = fileOps.rename(item.path, field.text)
-        if (problem.length === 0)
-            close()
+        if (problem.length > 0)
+            return
+        close()
     }
 
     // On the dialog, not the field, so Escape still cancels after Tab has

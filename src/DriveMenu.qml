@@ -23,6 +23,8 @@ FolioMenu {
             popup(near, Math.min(near.width / 2, 120), near.height / 2)
         else
             popup()
+        // The first entry is highlighted already, as in the folders' menu.
+        currentIndex = 0
     }
 
     FolioMenuItem {

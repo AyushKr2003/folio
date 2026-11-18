@@ -35,6 +35,8 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_staleClear.setSingleShot(true);
     m_staleClear.setInterval(150);
     connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
+    connect(this, &FolderModel::pathChanged, this, &FolderModel::expandableChanged);
+    connect(this, &FolderModel::queryChanged, this, &FolderModel::expandableChanged);
 }
 
 // Generations start at 1, so 0 stops any search or folder count still
@@ -75,7 +77,13 @@ void FolderModel::remember() {
     // Search results are a moment's question, not a folder to come back to.
     if (!m_query.isEmpty())
         return;
-    recentListings().insert(cacheKey(), new QVector<Entry>(m_entries));
+    // The folder's own items: what's opened in place is closed on coming
+    // back.
+    auto *own = new QVector<Entry>;
+    for (const Entry &e : m_entries)
+        if (e.depth == 0)
+            own->push_back(e);
+    recentListings().insert(cacheKey(), own);
 }
 
 bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) {
@@ -88,7 +96,7 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
         // path (its id) when they change.
         if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
             || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension
-            || a[i].icon != b[i].icon || a[i].details != b[i].details)
+            || a[i].icon != b[i].icon || a[i].details != b[i].details || a[i].depth != b[i].depth)
             return false;
     return true;
 }
@@ -126,6 +134,8 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
     case IconRole: return e.icon;
+    case DepthRole: return e.depth;
+    case ExpandedRole: return m_expanded.contains(e.path);
     }
     return {};
 }
@@ -135,7 +145,7 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
-        {IconRole, "icon"},
+        {IconRole, "icon"}, {DepthRole, "depth"}, {ExpandedRole, "expanded"},
     };
 }
 
@@ -172,6 +182,9 @@ void FolderModel::setQuery(const QString &query) {
     if (query == m_query)
         return;
     m_query = query;
+    // Search results are a flat list.
+    if (!m_query.isEmpty())
+        forgetExpanded();
     emit queryChanged();
     setSelected({});
     // Back to the folder: its remembered listing shows at once.
@@ -209,6 +222,8 @@ void FolderModel::setPath(const QString &path) {
     if (!m_watcher.files().isEmpty())
         m_watcher.removePaths(m_watcher.files());
     m_path = clean;
+    m_expanded.clear();
+    m_open.clear();
     emit pathChanged();
     // A search is of one folder; going elsewhere ends it.
     if (!m_query.isEmpty()) {
@@ -543,15 +558,25 @@ void FolderModel::reload() {
     const QLocale locale;
     const QVariantList items = m_items;
     const QStringList filter = m_filter;
+    const QStringList expanded = expandable() ? QStringList(m_expanded.begin(), m_expanded.end()) : QStringList();
     *m_latest = generation;
     const auto latest = m_latest;
-    auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList>>(this);
+    auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>, QHash<QString, QString>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
-        const auto [entries, error, trashDirs] = watcher->result();
+        const auto [listed, error, trashDirs, open, unread] = watcher->result();
+        // The folders opened in place, each with its items under it, and
+        // those that can no longer be read closed.
+        for (auto it = open.begin(); it != open.end(); ++it)
+            if (m_expanded.contains(it.key()))
+                m_open.insert(it.key(), it.value());
+        for (auto it = unread.begin(); it != unread.end(); ++it)
+            if (m_expanded.contains(it.key()))
+                failExpanded(it.key(), it.value());
+        const QVector<Entry> entries = m_open.isEmpty() ? listed : flatten(listed, m_open);
         // Unchanged (the usual case after showing a remembered listing):
         // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
@@ -578,7 +603,7 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [path, showHidden, sort, query, items, filter, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [path, showHidden, sort, query, items, filter, expanded, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
         // Finding the drives' trash looks over every mount, so it's done here,
@@ -590,7 +615,23 @@ void FolderModel::reload() {
                      : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
         if (!isPluginView(path))
             entries.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
-        return std::make_tuple(entries, error, trashDirs);
+        // Every folder opened in place, read again with it; one that can't
+        // be is told by its error.
+        QHash<QString, QVector<Entry>> open;
+        QHash<QString, QString> unread;
+        for (const QString &folder : expanded) {
+            if (overtaken())
+                break;
+            QString why;
+            auto items = list(folder, showHidden, sort, &why, overtaken, locale);
+            if (!why.isEmpty()) {
+                unread.insert(folder, why);
+                continue;
+            }
+            items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
+            open.insert(folder, items);
+        }
+        return std::make_tuple(entries, error, trashDirs, open, unread);
     }));
 }
 
@@ -620,7 +661,7 @@ void FolderModel::countFolders(quint64 generation) {
             updated = true;
         }
         // QML re-reads its get() snapshots (the current item, which the
-        // details pane shows) on countChanged, and the counts they show
+        // details column shows) on countChanged, and the counts they show
         // just arrived.
         if (updated)
             emit countChanged();
@@ -646,6 +687,7 @@ QVariantMap FolderModel::get(int row) const {
     const Entry &e = m_entries.at(row);
     QVariantMap map = toMap(e);
     map.insert("selected", m_selected.contains(e.path));
+    map.insert("expanded", m_expanded.contains(e.path));
     return map;
 }
 
@@ -654,7 +696,7 @@ QVariantMap FolderModel::toMap(const Entry &entry) {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
         {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
         {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"icon", entry.icon},
-        {"details", entry.details},
+        {"details", entry.details}, {"depth", entry.depth},
     };
 }
 
@@ -724,11 +766,174 @@ QStringList FolderModel::selectedPaths() const {
     return paths;
 }
 
+// Among the folder's own items, not those of a folder opened in place.
 int FolderModel::indexOf(const QString &name) const {
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].name == name)
+        if (m_entries[row].depth == 0 && m_entries[row].name == name)
             return row;
     return -1;
+}
+
+bool FolderModel::expandable() const {
+    return !m_path.isEmpty() && !isView(m_path) && !isTrash(m_path) && m_query.isEmpty();
+}
+
+QVector<FolderModel::Entry> FolderModel::flatten(const QVector<Entry> &entries, const QHash<QString, QVector<Entry>> &open, int depth) {
+    QVector<Entry> rows;
+    for (Entry e : entries) {
+        e.depth = depth;
+        rows.push_back(e);
+        if (e.isDir)
+            if (const auto inside = open.constFind(e.path); inside != open.constEnd())
+                rows += flatten(*inside, open, depth + 1);
+    }
+    return rows;
+}
+
+bool FolderModel::isExpanded(int row) const {
+    return row >= 0 && row < m_entries.size() && m_expanded.contains(m_entries[row].path);
+}
+
+int FolderModel::parentRow(int row) const {
+    if (row < 0 || row >= m_entries.size())
+        return -1;
+    for (int above = row - 1; above >= 0; --above)
+        if (m_entries[above].depth < m_entries[row].depth)
+            return above;
+    return -1;
+}
+
+void FolderModel::setExpanded(int row, bool expanded) {
+    if (row < 0 || row >= m_entries.size() || !m_entries[row].isDir || !expandable()
+        || expanded == m_expanded.contains(m_entries[row].path))
+        return;
+    const QString folder = m_entries[row].path;
+    const QModelIndex at = index(row);
+    if (!expanded) {
+        // It, and every folder opened inside it, close.
+        const QString inside = folder + '/';
+        for (auto it = m_expanded.begin(); it != m_expanded.end();) {
+            if (*it == folder || it->startsWith(inside)) {
+                m_watcher.removePath(*it);
+                m_open.remove(*it);
+                m_opening.remove(*it);
+                it = m_expanded.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        int end = row + 1;
+        while (end < m_entries.size() && m_entries[end].depth > m_entries[row].depth)
+            ++end;
+        if (end > row + 1) {
+            QSet<QString> selected = m_selected;
+            for (int r = row + 1; r < end; ++r)
+                selected.remove(m_entries[r].path);
+            beginRemoveRows({}, row + 1, end - 1);
+            m_entries.remove(row + 1, end - row - 1);
+            endRemoveRows();
+            emit countChanged();
+            // What was selected inside goes with it.
+            setSelected(selected);
+        }
+        emit dataChanged(at, at, {ExpandedRole});
+        return;
+    }
+
+    m_expanded.insert(folder);
+    m_watcher.addPath(folder);
+    emit dataChanged(at, at, {ExpandedRole});
+    const quint64 opening = ++m_openings;
+    m_opening.insert(folder, opening);
+    const quint64 generation = m_generation;
+    const bool showHidden = m_showHidden;
+    const QString sort = m_sort;
+    const QStringList filter = m_filter;
+    const QLocale locale;
+    const auto latest = m_latest;
+    auto *watcher = new QFutureWatcher<std::pair<QVector<Entry>, QString>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, folder, opening] {
+        watcher->deleteLater();
+        // A re-read since (which reads it too), or closed meanwhile, and
+        // perhaps opened again: only this opening's reading counts.
+        if (generation != m_generation || m_opening.value(folder) != opening)
+            return;
+        m_opening.remove(folder);
+        const auto &[items, error] = watcher->result();
+        if (!error.isEmpty()) {
+            failExpanded(folder, error);
+            return;
+        }
+        const int row = indexOfPath(folder);
+        if (row < 0)
+            return;
+        m_open.insert(folder, items);
+        // A re-read that finished first may have listed it already: its rows
+        // are replaced, never listed twice.
+        int end = row + 1;
+        while (end < m_entries.size() && m_entries[end].depth > m_entries[row].depth)
+            ++end;
+        if (end > row + 1) {
+            beginRemoveRows({}, row + 1, end - 1);
+            m_entries.remove(row + 1, end - row - 1);
+            endRemoveRows();
+        }
+        const QVector<Entry> rows = flatten(items, m_open, m_entries[row].depth + 1);
+        if (rows.isEmpty())
+            return;
+        beginInsertRows({}, row + 1, row + int(rows.size()));
+        for (int i = 0; i < rows.size(); ++i)
+            m_entries.insert(row + 1 + i, rows[i]);
+        endInsertRows();
+        emit countChanged();
+        countFolders(generation);
+    });
+    watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [folder, showHidden, sort, filter, latest, generation, locale] {
+        QString error;
+        auto items = list(folder, showHidden, sort, &error, [&] { return *latest != generation; }, locale);
+        items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
+        return std::make_pair(items, error);
+    }));
+}
+
+void FolderModel::failExpanded(const QString &folder, const QString &error) {
+    // Closed as a click on its arrow would, its items (if any were shown)
+    // going with it.
+    if (const int row = indexOfPath(folder); row >= 0 && m_expanded.contains(folder)) {
+        setExpanded(row, false);
+    } else {
+        m_expanded.remove(folder);
+        m_open.remove(folder);
+        m_opening.remove(folder);
+        m_watcher.removePath(folder);
+    }
+    //: %1 is a folder's name, %2 why it couldn't be opened.
+    emit expandFailed(tr("%1: %2").arg(QFileInfo(folder).fileName(), error));
+}
+
+void FolderModel::forgetExpanded() {
+    for (const QString &folder : std::as_const(m_expanded))
+        if (folder != m_path)
+            m_watcher.removePath(folder);
+    m_expanded.clear();
+    m_open.clear();
+    m_opening.clear();
+}
+
+void FolderModel::collapseAll() {
+    if (m_expanded.isEmpty())
+        return;
+    forgetExpanded();
+    QVector<Entry> own;
+    for (const Entry &e : std::as_const(m_entries))
+        if (e.depth == 0)
+            own.push_back(e);
+    QSet<QString> selected;
+    for (const Entry &e : std::as_const(own))
+        if (m_selected.contains(e.path))
+            selected.insert(e.path);
+    setEntries(own);
+    setSelected(selected);
 }
 
 int FolderModel::indexOfPath(const QString &path) const {

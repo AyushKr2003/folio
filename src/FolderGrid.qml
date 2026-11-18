@@ -14,9 +14,12 @@ GridView {
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
 
-    Selecting { id: selecting; view: grid }
+    // A page is the rows in sight, less one, a whole row at a time.
+    Selecting { id: selecting; view: grid; pageStep: Math.max(1, Math.floor(grid.height / grid.cellHeight) - 1) * Math.max(1, grid.columns) }
     onCurrentIndexChanged: selecting.cursorMoved()
     Keys.onPressed: (event) => {
+        if (selecting.page(event))
+            return
         // With no cursor (after a click on empty space), Down starts at the
         // first item, not a row's width on from before it.
         if (event.key === Qt.Key_Down && currentIndex < 0 && count > 0) {

@@ -27,7 +27,7 @@ class QTimer;
 //
 // What the sidebar, the views and the right-click menu show comes from the
 // latest output kept here, translated with the plugin's own catalog, so
-// drawing them never runs a command. The details pane's rows about a file
+// drawing them never runs a command. The details column's rows about a file
 // come from a command run for that file, kept here once it has answered.
 class Plugins : public QObject {
     Q_OBJECT
@@ -61,7 +61,7 @@ public:
         bool view = false;
         QString viewTitle, viewLabel, viewIcon, viewEmpty;
         QList<Action> actions;
-        // The command giving rows for the details pane, and the files and
+        // The command giving rows for the details column, and the files and
         // folders it's run for.
         QStringList details, detailsUnder, detailsTypes;
         // The plugin's catalog for the language Folio shows.
@@ -191,7 +191,7 @@ public:
 signals:
     void changed();
     // What plugins say about files may have changed (F5, another language,
-    // or a plugin's poll saying something new), so the details pane asks
+    // or a plugin's poll saying something new), so the details column asks
     // again.
     void detailsChanged();
 

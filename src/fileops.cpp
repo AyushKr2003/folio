@@ -151,6 +151,10 @@ bool FileOps::shiftHeld() {
     return QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier;
 }
 
+bool FileOps::altHeld() {
+    return QGuiApplication::queryKeyboardModifiers() & Qt::AltModifier;
+}
+
 void FileOps::copy(const QStringList &paths) {
     if (!paths.isEmpty())
         QGuiApplication::clipboard()->setMimeData(mimeDataFor(paths, false));
@@ -1638,6 +1642,7 @@ QString FileOps::rename(const QString &path, const QString &name) {
         return QFileInfo::exists(destination) ? tr("%1 already exists here.").arg(clean)
                                               : tr("Couldn't rename %1.").arg(info.fileName());
     remember({Renaming, info.fileName(), 1, {identified({false, destination, path})}});
+    emit renamed(path, destination);
     emit done(info.absolutePath(), clean);
     return {};
 }
@@ -1941,6 +1946,12 @@ void FileOps::step(bool undoing) {
                 sayStopped(job);
             else
                 emit notice(didMessage(change, undoing));
+            // A rename undone or redone moves the item back or on again;
+            // each flipped step is now at `path`, from `other`.
+            if (change.kind == Renaming)
+                for (const Step &step : result.steps.mid(result.left))
+                    if (!step.trash && !step.folder)
+                        emit renamed(step.other, step.path);
             // What's back in a folder is selected there, as after a paste.
             for (const Step &step : result.steps.mid(result.left))
                 if (!step.folder && (!step.trash || step.other.isEmpty())) {

@@ -32,7 +32,7 @@ Done, tested, and verified offscreen:
 - Multi-select: Shift+click/arrows for ranges, Alt+click to add or remove, rubber band on empty space, Ctrl+A; file actions and drags act on the selection.
 - Path entry (Ctrl+L): ~ and relative paths, a file selects itself in its folder, Tab completes folder names.
 - `/` searches this folder and every folder below it by name as you type: a live breadth-first walk, nearest first, that stays on the folder's drive and doesn't follow symlinked folders.
-- Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; no headings; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
+- Three views, remembered between launches: Finder-style columns (Ctrl+1, the first launch's), list with name, size and date (Ctrl+2; a tree, folders opening in place; no headings; the date then the size step aside when narrow), and grid (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: a Home section (its label goes home) listing every folder in home (XDG folders and Dropbox with their own glyphs, `omarchy` shown as Omarchy); Pinned folders (Ctrl+D or drag onto the sidebar) stored as GTK bookmarks; Dropbox (with `dropbox-cli` sync status), Trash, physical drives (removable and extra internal disks, not the system's own), online tailnet machines from `tailscale status --json`.
 - Tailnet machines open over SFTP through GIO, landing in the matching home folder; their host keys are accepted without asking (Tailscale already checked the peer), and a password, when keys aren't set up, is asked in the window.

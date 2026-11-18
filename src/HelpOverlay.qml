@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import "Format.js" as Format
 
-// Every shortcut, one keypress away (?). It has the keyboard while it's
-// shown, so the arrows scroll it rather than move through the files behind.
+// Every shortcut, one keypress away (?), in groups: what it does on the
+// left, its keys as keycaps on the right. The groups flow into as many
+// columns as the window has room for. It has the keyboard while it's shown,
+// so the arrows scroll it rather than move through the files behind.
 Rectangle {
     id: overlay
 
@@ -12,9 +13,9 @@ Rectangle {
 
     color: Qt.rgba(0, 0, 0, 0.55)
 
-    // ↑ ↓, Page Up, Page Down, Home and End, for a list the window is too
-    // short for. Tab stays here too, rather than going on to a button
-    // behind the overlay.
+    // ↑ ↓, Page Up, Page Down, Home and End, for a window too short for it
+    // all. Tab stays here too, rather than going on to a button behind the
+    // overlay.
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
             event.accepted = true
@@ -29,64 +30,101 @@ Rectangle {
         event.accepted = true
     }
 
-    property var shortcuts: [
-        ["← ↑ → ↓", qsTr("Move the selection")],
-        [LayoutMirroring.enabled ? "← / →" : "→ / ←", qsTr("In list and columns: into a folder / back out")],
-        // The keys in these few are mixed with words; the key names (Shift,
-        // Alt, ⏎) stay as they are in every language.
-        [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],
-        [qsTr("Alt+click"), qsTr("Add or remove one from the selection")],
-        [qsTr("Drag on empty space"), qsTr("Select with a rectangle (Alt adds)")],
-        ["Ctrl+A", qsTr("Select everything")],
-        ["Tab / Shift+Tab", qsTr("Move between the sidebar, the panes and the details")],
-        [qsTr("Delete in the sidebar"), qsTr("Unpin the folder, or take the item off the sidebar")],
-        ["⏎", qsTr("Open")],
-        ["Backspace", qsTr("Go to the parent folder")],
-        ["Alt+← / Alt+→", qsTr("Back / forward (or the mouse's thumb buttons)")],
-        ["Alt+Home", qsTr("Go home")],
-        ["Ctrl+L", qsTr("Type a path, or a server's address like sftp://host/ (Tab completes)")],
-        ["/", qsTr("Search this folder and below")],
-        ["Ctrl+1 / 2 / 3", qsTr("Grid, list or columns")],
-        ["Ctrl+= / Ctrl+- / Ctrl+0", qsTr("Bigger, smaller or normal tiles (or Ctrl+scroll)")],
-        ["Space", qsTr("Preview the selected file")],
-        ["Ctrl+I", qsTr("Show or hide the details pane")],
-        ["Ctrl+P", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
-        ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
-        ["Ctrl+Shift+C", qsTr("Copy the path as text")],
-        ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
-        ["Ctrl+N", qsTr("New window")],
-        ["Ctrl+Shift+N", qsTr("New folder")],
-        ["Ctrl+Alt+N / Ctrl+W", qsTr("Split into two panes / close the right one")],
-        ["Delete", qsTr("Move to the trash")],
-        ["Shift+Delete", qsTr("Delete permanently (asks first)")],
-        ["Ctrl+Z / Ctrl+Shift+Z", qsTr("Undo / redo the last change to files (or Ctrl+Y)")],
-        ["Escape", qsTr("Stop the file work under way, or dismiss what went wrong")],
-        [qsTr("Right-click / Alt+⏎ / Menu"), qsTr("Everything else, for files and for drives in the sidebar")],
-        ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
-        ["Ctrl+H", qsTr("Show hidden files")],
-        ["F5", qsTr("Reload")],
-        ["?", qsTr("Show these shortcuts")],
-        ["Q", qsTr("Close the window")]
+    // Each shortcut is what it does, then its keys: the ways to do it, each
+    // a list of keys pressed together. A word starting with ~ is something
+    // done with the mouse ("click"), said rather than drawn as a key. Key
+    // names (Shift, Alt, Ctrl) stay as they are in every language.
+    // The preview window gives its own, in the same form.
+    readonly property bool mirrored: LayoutMirroring.enabled
+    property var groups: [
+        { title: qsTr("Moving around"), shortcuts: [
+            [qsTr("Move the selection"), [["←", "↑", "→", "↓"]]],
+            [qsTr("Into a folder / back out"), mirrored ? [["←"], ["→"]] : [["→"], ["←"]]],
+            [qsTr("A screenful up or down"), [["Page Up"], ["Page Down"]]],
+            [qsTr("Open"), [["⏎"]]],
+            [qsTr("Go to the parent folder"), [["Backspace"]]],
+            [qsTr("Back / forward"), [["Alt", "←"], ["Alt", "→"]]],
+            [qsTr("Go home"), [["Alt", "Home"]]],
+            [qsTr("Type a path or a server's address"), [["Ctrl", "L"]]],
+            [qsTr("Search this folder and below"), [["/"]]],
+            [qsTr("Sidebar, panes and details"), [["Tab"], ["Shift", "Tab"]]]
+        ]},
+        { title: qsTr("Selecting"), shortcuts: [
+            [qsTr("Select a range"), [["Shift", "~" + qsTr("click")], ["Shift", "↑↓"]]],
+            [qsTr("Add or remove one"), [["Alt", "~" + qsTr("click")]]],
+            [qsTr("Select with a rectangle"), [["~" + qsTr("drag on empty space")]]],
+            [qsTr("Select everything"), [["Ctrl", "A"]]]
+        ]},
+        { title: qsTr("Files"), shortcuts: [
+            [qsTr("Copy, cut, paste"), [["Ctrl", "C"], ["Ctrl", "X"], ["Ctrl", "V"]]],
+            [qsTr("Copy the path as text"), [["Ctrl", "Shift", "C"]]],
+            [qsTr("Rename"), [["F2"]]],
+            [qsTr("Duplicate"), [["Ctrl", "Shift", "D"]]],
+            [qsTr("New folder"), [["Ctrl", "Shift", "N"]]],
+            [qsTr("Preview the selected file"), [["Space"]]],
+            [qsTr("Move to the trash"), [["Delete"]]],
+            [qsTr("Delete permanently (asks first)"), [["Shift", "Delete"]]],
+            [qsTr("Undo / redo"), [["Ctrl", "Z"], ["Ctrl", "Shift", "Z"]]],
+            [qsTr("Pin or unpin the folder"), [["Ctrl", "P"]]],
+            [qsTr("Everything else"), [["~" + qsTr("right-click")], ["Alt", "⏎"]]],
+            [qsTr("Stop the work under way"), [["Escape"]]]
+        ]},
+        { title: qsTr("View"), shortcuts: [
+            [qsTr("Columns, list or grid"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"]]],
+            [qsTr("Bigger, smaller or normal tiles"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
+            [qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]],
+            [qsTr("Show hidden files"), [["Ctrl", "H"]]],
+            [qsTr("Reload"), [["F5"]]]
+        ]},
+        { title: qsTr("Window"), shortcuts: [
+            [qsTr("New window"), [["Ctrl", "N"]]],
+            [qsTr("Split into two panes"), [["Ctrl", "Alt", "N"]]],
+            [qsTr("Close the right pane"), [["Ctrl", "W"]]],
+            [qsTr("Unpin from the sidebar"), [["Delete"]]],
+            [qsTr("Show these shortcuts"), [["?"]]],
+            [qsTr("Close the window"), [["Q"]]]
+        ]}
     ]
+
+    // As many columns as fit, and the groups dealt out among them in turn
+    // to whichever is shortest, so they come out about as long. A column
+    // narrows to fit a small window (the preview's can be 480 wide), its
+    // descriptions eliding first, and what still doesn't fit scrolls.
+    readonly property int columnWidth: Math.min(400, Math.max(240, width - 64 - 56))
+    readonly property int columnGap: 48
+    readonly property int columnCount: Math.max(1, Math.min(3, Math.floor((width - 64 - 56 + columnGap) / (columnWidth + columnGap))))
+    readonly property var columns: {
+        const columns = [], lengths = []
+        for (let i = 0; i < columnCount; ++i) {
+            columns.push([])
+            lengths.push(0)
+        }
+        for (const group of groups) {
+            const shortest = lengths.indexOf(Math.min(...lengths))
+            columns[shortest].push(group)
+            lengths[shortest] += group.shortcuts.length + 2
+        }
+        return columns
+    }
 
     MouseArea { anchors.fill: parent; onClicked: overlay.dismissed() }
 
-    // Sized to what it holds: two columns of shortcuts side by side when
-    // the window is wide enough, and scrolling when it's too short for them.
     Rectangle {
         anchors.centerIn: parent
         width: Math.min(parent.width - 64, content.implicitWidth + 56)
         height: Math.min(parent.height - 64, content.implicitHeight + 56)
         color: theme.background
         border.width: 1
-        border.color: theme.accent
+        border.color: Qt.alpha(theme.foreground, 0.16)
         radius: theme.radius
+        // Clicks inside don't dismiss it.
+        MouseArea { anchors.fill: parent }
 
         Flickable {
             id: flick
             anchors.fill: parent
             anchors.margins: 28
-            contentWidth: width
+            contentWidth: Math.max(width, content.implicitWidth)
             contentHeight: content.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -94,35 +132,131 @@ Rectangle {
 
             ColumnLayout {
                 id: content
-                width: parent.width
-                spacing: 14
+                width: Math.max(implicitWidth, parent.width)
+                spacing: 20
 
-                Text { text: qsTr("Keyboard shortcuts"); color: theme.brightForeground; font.pixelSize: 16; font.weight: Font.DemiBold }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        text: qsTr("Keyboard shortcuts")
+                        color: theme.brightForeground
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                    }
+                    Text { text: qsTr("Escape closes"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                }
 
-                GridLayout {
-                    // Pairs of key and description, two pairs a row when the
-                    // window has room for them.
-                    columns: overlay.width >= 1500 ? 4 : 2
-                    rowSpacing: 10
-                    columnSpacing: 28
-                    // Each key, then what it does: the grid fills its columns
-                    // in order. (QML's JavaScript has no Array.flat.)
+                RowLayout {
+                    spacing: overlay.columnGap
                     Repeater {
-                        model: [].concat(...overlay.shortcuts)
-                        delegate: Text {
+                        model: overlay.columns
+                        ColumnLayout {
+                            id: column
                             required property var modelData
-                            required property int index
-                            Layout.maximumWidth: index % 2 ? 340 : -1
-                            // Set, so that it's mirrored: left as it is, an
-                            // English description would follow its own script.
-                            horizontalAlignment: Text.AlignLeft
-                            text: index % 2 ? modelData : Format.keys(modelData)
-                            wrapMode: Text.WordWrap
-                            color: index % 2 ? theme.foreground : theme.accent
+                            Layout.preferredWidth: overlay.columnWidth
+                            Layout.maximumWidth: overlay.columnWidth
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 22
+                            Repeater {
+                                model: column.modelData
+                                Group { }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    // A group: its title, then a row for each shortcut.
+    component Group: ColumnLayout {
+        id: group
+        required property var modelData
+        Layout.fillWidth: true
+        spacing: 2
+        Text {
+            Layout.bottomMargin: 6
+            text: group.modelData.title
+            color: theme.secondaryForeground
+            font.pixelSize: 11
+            font.letterSpacing: 1.3
+            font.capitalization: Font.AllUppercase
+        }
+        Repeater {
+            model: group.modelData.shortcuts
+            RowLayout {
+                id: shortcut
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+                spacing: 16
+                // Aligned explicitly, so that it's mirrored with the rest.
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
+                    text: shortcut.modelData[0]
+                    color: theme.foreground
+                    elide: Text.ElideRight
+                }
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: shortcut.modelData[1]
+                        Row {
+                            id: way
+                            required property var modelData
+                            required property int index
+                            spacing: 4
+                            Text {
+                                visible: way.index > 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "/"
+                                color: theme.secondaryForeground
+                                font.pixelSize: 12
+                            }
+                            Repeater {
+                                model: way.modelData
+                                Key { }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // A key as a keycap, or something done with the mouse as a word.
+    component Key: Item {
+        id: key
+        required property string modelData
+        readonly property bool word: modelData.startsWith("~")
+        implicitWidth: word ? said.implicitWidth : Math.max(24, cap.implicitWidth + 14)
+        implicitHeight: 22
+        Rectangle {
+            visible: !key.word
+            anchors.fill: parent
+            radius: Math.min(4, theme.radius)
+            color: Qt.alpha(theme.foreground, 0.06)
+            border.width: 1
+            border.color: Qt.alpha(theme.foreground, 0.18)
+        }
+        Text {
+            id: cap
+            visible: !key.word
+            anchors.centerIn: parent
+            text: key.modelData
+            color: theme.accent
+            font.pixelSize: 12
+        }
+        Text {
+            id: said
+            visible: key.word
+            anchors.verticalCenter: parent.verticalCenter
+            text: key.modelData.slice(1)
+            color: theme.secondaryForeground
+            font.pixelSize: 12
         }
     }
 }

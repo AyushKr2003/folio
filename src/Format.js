@@ -30,7 +30,20 @@ function when(date) {
     const locale = Qt.locale()
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-    return today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat)
+    return spaced(today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat))
+}
+
+// A date and time in the language's short form, as in the details.
+function stamp(date) {
+    return spaced(date.toLocaleString(Qt.locale(), QtQml.Locale.ShortFormat))
+}
+
+// Dates and times come with no-break spaces ("1:42 PM" with a narrow one)
+// that many monospaced fonts lack: drawn by a fallback font, the space
+// goes missing and the text sits higher than its neighbors. Plain spaces
+// read the same.
+function spaced(text) {
+    return text.replace(/[\u00a0\u202f]/g, " ")
 }
 
 // A folder's contents; nothing until they've been counted.
@@ -56,6 +69,12 @@ function summary(item, type) {
 function thumb(path, mime, px, modified) {
     const changed = modified ? modified.getTime() : 0
     return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
+}
+
+// A picture as sharp as `px` pixels on its longest side, for the details.
+function sharp(path, mime, px, modified) {
+    const changed = modified ? modified.getTime() : 0
+    return "image://thumb/sharp/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
 }
 
 // A text file's first lines on a page in the theme's colors.

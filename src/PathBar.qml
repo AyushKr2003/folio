@@ -7,8 +7,6 @@ import QtQuick.Layouts
 Rectangle {
     id: bar
 
-    property bool previewVisible: true
-    property bool previewFits: true
     property string viewMode: "grid"
     // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
     // server's address), Escape cancels, Tab completes a folder name.
@@ -16,7 +14,10 @@ Rectangle {
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
     signal closeRequested()
-    signal togglePreview()
+    // The window's last bar has a quiet ? before its buttons, for finding the
+    // shortcuts without knowing the key that shows them.
+    property bool showsHelp: false
+    signal helpRequested()
     signal cycleView()
     signal editDone()
 
@@ -203,6 +204,44 @@ Rectangle {
         }
 
         Item { implicitWidth: 16 }
+        // First of the buttons, before those for the folder shown.
+        AbstractButton {
+            id: help
+            visible: bar.showsHelp
+            // As wide as the buttons beside it, the ? itself smaller.
+            implicitWidth: 36
+            implicitHeight: 36
+            focusPolicy: Qt.NoFocus
+            hoverEnabled: true
+            text: qsTr("Keyboard shortcuts")
+            Accessible.name: text
+            onClicked: bar.helpRequested()
+            ToolTip {
+                visible: help.hovered
+                delay: 600
+                text: help.text
+                enter: null
+                exit: null
+            }
+            contentItem: Item {
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 22
+                    height: 22
+                    radius: width / 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
+                    Text {
+                        anchors.centerIn: parent
+                        text: "?"
+                        font.pixelSize: 13
+                        color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
+                    }
+                }
+            }
+            background: null
+        }
         // In a file chooser, the app's filters when it gives a choice of
         // them: a menu under the button, which names the one in use on
         // hover. The right pane of a split leaves them to the left one.
@@ -234,9 +273,9 @@ Rectangle {
         IconButton {
             glyph: bar.viewMode
             // Names what a click does, like the buttons beside it.
-            text: bar.viewMode === "grid" ? qsTr("Show as list")
-                : bar.viewMode === "list" ? qsTr("Show as columns")
-                : qsTr("Show as grid")
+            text: bar.viewMode === "columns" ? qsTr("Show as list")
+                : bar.viewMode === "list" ? qsTr("Show as grid")
+                : qsTr("Show as columns")
             onClicked: bar.cycleView()
         }
         IconButton {
@@ -261,14 +300,6 @@ Rectangle {
             // A press on the button it opens under is left to the button's
             // click, which closes it.
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        }
-        IconButton {
-            glyph: "preview"
-            // Only where the window has room to show them.
-            visible: bar.previewFits
-            text: qsTr("Details")
-            active: bar.previewVisible
-            onClicked: bar.togglePreview()
         }
         IconButton {
             visible: bar.closable
