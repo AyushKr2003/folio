@@ -152,6 +152,7 @@
     "few": "Odstraňovanie %Ln položiek…",
     "other": "Odstraňovanie %Ln položiek…"
   },
+  "Details": "Podrobnosti",
   "Devices": "Zariadenia",
   "Dimensions": "Rozmery",
   "Dismiss": "Zavrieť",
@@ -276,6 +277,7 @@
   "No matches": "Žiadne zhody",
   "No preview for this type. Press ⏎ to open it.": "Pre tento typ nie je k dispozícii náhľad. Stlačením ⏎ ho otvoríte.",
   "Nothing matches “%1”": "Nič nezodpovedá výrazu „%1“",
+  "Nothing selected": "Nič nie je vybraté",
   "Oldest": "Najstaršie",
   "Oldest first": "Najprv najstaršie",
   "Only folders can be pinned.": "Pripnúť sa dajú len priečinky.",
@@ -394,6 +396,7 @@
   "Show as list": "Zobraziť ako zoznam",
   "Show hidden files": "Zobraziť skryté súbory",
   "Show in Home": "Zobraziť v Domove",
+  "Show or hide the details pane": "Zobraziť alebo skryť panel podrobností",
   "Show these shortcuts": "Zobraziť tieto skratky",
   "Sidebar, panes and details": "Bočný panel, panely a podrobnosti",
   "Sign in": "Prihlásiť sa",

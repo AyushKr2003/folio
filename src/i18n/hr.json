@@ -152,6 +152,7 @@
     "few": "Brišu se %Ln stavke…",
     "other": "Briše se %Ln stavki…"
   },
+  "Details": "Pojedinosti",
   "Devices": "Uređaji",
   "Dimensions": "Dimenzije",
   "Dismiss": "Odbaci",
@@ -276,6 +277,7 @@
   "No matches": "Nema podudaranja",
   "No preview for this type. Press ⏎ to open it.": "Nema pretpregleda za ovu vrstu. Za otvaranje pritisnite ⏎.",
   "Nothing matches “%1”": "Ništa se ne podudara s „%1”",
+  "Nothing selected": "Ništa nije odabrano",
   "Oldest": "Najstarije",
   "Oldest first": "Najstarije prvo",
   "Only folders can be pinned.": "Samo se mape mogu prikvačiti.",
@@ -394,6 +396,7 @@
   "Show as list": "Prikaži kao popis",
   "Show hidden files": "Prikaži skrivene datoteke",
   "Show in Home": "Prikaži u osobnoj mapi",
+  "Show or hide the details pane": "Prikaži ili sakrij okno s pojedinostima",
   "Show these shortcuts": "Prikaži ove prečace",
   "Sidebar, panes and details": "Bočna traka, okna i pojedinosti",
   "Sign in": "Prijavi se",

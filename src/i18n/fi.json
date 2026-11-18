@@ -144,6 +144,7 @@
     "one": "Poistetaan %Ln kohde…",
     "other": "Poistetaan %Ln kohdetta…"
   },
+  "Details": "Tiedot",
   "Devices": "Laitteet",
   "Dimensions": "Mitat",
   "Dismiss": "Hylkää",
@@ -257,6 +258,7 @@
   "No matches": "Ei osumia",
   "No preview for this type. Press ⏎ to open it.": "Tälle tyypille ei ole esikatselua. Avaa se painamalla ⏎.",
   "Nothing matches “%1”": "Ei osumia haulle “%1”",
+  "Nothing selected": "Ei valintaa",
   "Oldest": "Vanhin",
   "Oldest first": "Vanhin ensin",
   "Only folders can be pinned.": "Vain kansioita voi kiinnittää.",
@@ -365,6 +367,7 @@
   "Show as list": "Näytä luettelona",
   "Show hidden files": "Näytä piilotetut tiedostot",
   "Show in Home": "Näytä kotikansiossa",
+  "Show or hide the details pane": "Näytä tai piilota tietopaneeli",
   "Show these shortcuts": "Näytä nämä pikanäppäimet",
   "Sidebar, panes and details": "Sivupalkki, ruudut ja tiedot",
   "Sign in": "Kirjaudu sisään",

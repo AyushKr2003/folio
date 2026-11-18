@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "Menghapus %Ln item…"
   },
+  "Details": "Rincian",
   "Devices": "Perangkat",
   "Dimensions": "Dimensi",
   "Dismiss": "Abaikan",
@@ -238,6 +239,7 @@
   "No matches": "Tidak ada yang cocok",
   "No preview for this type. Press ⏎ to open it.": "Tidak ada pratinjau untuk jenis ini. Tekan ⏎ untuk membukanya.",
   "Nothing matches “%1”": "Tidak ada yang cocok dengan “%1”",
+  "Nothing selected": "Tidak ada yang dipilih",
   "Oldest": "Terlama",
   "Oldest first": "Terlama dulu",
   "Only folders can be pinned.": "Hanya folder yang dapat disematkan.",
@@ -336,6 +338,7 @@
   "Show as list": "Tampilkan sebagai daftar",
   "Show hidden files": "Tampilkan berkas tersembunyi",
   "Show in Home": "Tampilkan di Beranda",
+  "Show or hide the details pane": "Tampilkan atau sembunyikan panel detail",
   "Show these shortcuts": "Tampilkan pintasan ini",
   "Sidebar, panes and details": "Bilah sisi, panel, dan detail",
   "Sign in": "Masuk",

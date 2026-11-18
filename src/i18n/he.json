@@ -152,6 +152,7 @@
     "two": "מוחק שני פריטים…",
     "other": "מוחק %Ln פריטים…"
   },
+  "Details": "פרטים",
   "Devices": "התקנים",
   "Dimensions": "ממדים",
   "Dismiss": "התעלמות",
@@ -276,6 +277,7 @@
   "No matches": "אין התאמות",
   "No preview for this type. Press ⏎ to open it.": "אין תצוגה מקדימה לסוג זה. יש ללחוץ על ⏎ כדי לפתוח אותו.",
   "Nothing matches “%1”": "אין התאמות עבור “%1”",
+  "Nothing selected": "לא נבחר דבר",
   "Oldest": "הישן ביותר",
   "Oldest first": "הישן ביותר תחילה",
   "Only folders can be pinned.": "ניתן להצמיד תיקיות בלבד.",
@@ -394,6 +396,7 @@
   "Show as list": "הצגה כרשימה",
   "Show hidden files": "הצגת קבצים נסתרים",
   "Show in Home": "הצגה בבית",
+  "Show or hide the details pane": "הצגה או הסתרה של חלונית הפרטים",
   "Show these shortcuts": "הצגת קיצורי המקלדת האלה",
   "Sidebar, panes and details": "סרגל צד, חלוניות ופרטים",
   "Sign in": "התחברות",

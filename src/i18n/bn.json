@@ -144,6 +144,7 @@
     "one": "%Lnটি আইটেম মোছা হচ্ছে…",
     "other": "%Lnটি আইটেম মোছা হচ্ছে…"
   },
+  "Details": "বিবরণ",
   "Devices": "ডিভাইস",
   "Dimensions": "মাত্রা",
   "Dismiss": "বাদ দিন",
@@ -257,6 +258,7 @@
   "No matches": "কোনো মিল নেই",
   "No preview for this type. Press ⏎ to open it.": "এই ধরনের জন্য কোনো প্রিভিউ নেই। খুলতে ⏎ টিপুন।",
   "Nothing matches “%1”": "“%1”-এর সঙ্গে কিছুই মেলে না",
+  "Nothing selected": "কিছুই নির্বাচিত নয়",
   "Oldest": "সবচেয়ে পুরোনো",
   "Oldest first": "পুরোনোগুলো আগে",
   "Only folders can be pinned.": "শুধু ফোল্ডারই পিন করা যাবে।",
@@ -365,6 +367,7 @@
   "Show as list": "তালিকা হিসেবে দেখান",
   "Show hidden files": "লুকানো ফাইল দেখান",
   "Show in Home": "হোমে দেখান",
+  "Show or hide the details pane": "বিস্তারিত প্যানেল দেখান বা লুকান",
   "Show these shortcuts": "এই শর্টকাটগুলো দেখান",
   "Sidebar, panes and details": "সাইডবার, পেন ও বিবরণ",
   "Sign in": "সাইন ইন করুন",

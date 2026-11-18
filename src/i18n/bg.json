@@ -144,6 +144,7 @@
     "one": "Изтриване на %Ln елемент…",
     "other": "Изтриване на %Ln елемента…"
   },
+  "Details": "Подробности",
   "Devices": "Устройства",
   "Dimensions": "Размери",
   "Dismiss": "Отхвърли",
@@ -257,6 +258,7 @@
   "No matches": "Няма съвпадения",
   "No preview for this type. Press ⏎ to open it.": "Няма преглед за този тип. Натисни ⏎, за да го отвориш.",
   "Nothing matches “%1”": "Нищо не съвпада с „%1“",
+  "Nothing selected": "Нищо не е избрано",
   "Oldest": "Най-старите",
   "Oldest first": "Най-старите първо",
   "Only folders can be pinned.": "Могат да се закрепят само папки.",
@@ -365,6 +367,7 @@
   "Show as list": "Покажи като списък",
   "Show hidden files": "Покажи скритите файлове",
   "Show in Home": "Покажи в личната папка",
+  "Show or hide the details pane": "Покажи или скрий панела с подробности",
   "Show these shortcuts": "Покажи тези клавишни комбинации",
   "Sidebar, panes and details": "Странична лента, панели и подробности",
   "Sign in": "Вход",

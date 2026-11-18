@@ -152,6 +152,7 @@
     "one": "Dzēš %Ln vienumu…",
     "other": "Dzēš %Ln vienumus…"
   },
+  "Details": "Detaļas",
   "Devices": "Ierīces",
   "Dimensions": "Izmēri",
   "Dismiss": "Noraidīt",
@@ -276,6 +277,7 @@
   "No matches": "Nav atbilstību",
   "No preview for this type. Press ⏎ to open it.": "Šim veidam nav priekšskatījuma. Nospiediet ⏎, lai to atvērtu.",
   "Nothing matches “%1”": "Nekas neatbilst “%1”",
+  "Nothing selected": "Nekas nav atlasīts",
   "Oldest": "Vecākie",
   "Oldest first": "Vecākie vispirms",
   "Only folders can be pinned.": "Tikai mapes var piespraust.",
@@ -394,6 +396,7 @@
   "Show as list": "Rādīt kā sarakstu",
   "Show hidden files": "Rādīt slēptos failus",
   "Show in Home": "Rādīt sadaļā Mājas",
+  "Show or hide the details pane": "Rādīt vai slēpt detaļu rūti",
   "Show these shortcuts": "Rādīt šos īsinājumtaustiņus",
   "Sidebar, panes and details": "Sānjosla, rūtis un detaļas",
   "Sign in": "Pieteikties",

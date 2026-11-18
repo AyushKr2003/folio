@@ -144,6 +144,7 @@
     "one": "%Ln öge siliniyor…",
     "other": "%Ln öge siliniyor…"
   },
+  "Details": "Ayrıntılar",
   "Devices": "Aygıtlar",
   "Dimensions": "Boyutlar",
   "Dismiss": "Kapat",
@@ -257,6 +258,7 @@
   "No matches": "Eşleşme yok",
   "No preview for this type. Press ⏎ to open it.": "Bu tür için ön izleme yok. Açmak için ⏎ tuşuna basın.",
   "Nothing matches “%1”": "“%1” ile eşleşen bir şey yok",
+  "Nothing selected": "Hiçbir şey seçilmedi",
   "Oldest": "En eski",
   "Oldest first": "En eski önce",
   "Only folders can be pinned.": "Yalnızca klasörler sabitlenebilir.",
@@ -365,6 +367,7 @@
   "Show as list": "Liste olarak göster",
   "Show hidden files": "Gizli dosyaları göster",
   "Show in Home": "Kişisel Klasörde göster",
+  "Show or hide the details pane": "Ayrıntılar bölmesini göster veya gizle",
   "Show these shortcuts": "Bu kısayolları göster",
   "Sidebar, panes and details": "Kenar çubuğu, bölmeler ve ayrıntılar",
   "Sign in": "Oturum aç",

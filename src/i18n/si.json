@@ -144,6 +144,7 @@
     "one": "%Ln අයිතමයක් මකා දමමින්…",
     "other": "%Ln අයිතම මකා දමමින්…"
   },
+  "Details": "විස්තර",
   "Devices": "උපාංග",
   "Dimensions": "මාන",
   "Dismiss": "අත්හරින්න",
@@ -257,6 +258,7 @@
   "No matches": "ගැලපීම් නැත",
   "No preview for this type. Press ⏎ to open it.": "මෙම වර්ගය සඳහා පෙරදසුනක් නැත. විවෘත කිරීමට ⏎ ඔබන්න.",
   "Nothing matches “%1”": "“%1” ට ගැලපෙන කිසිවක් නැත",
+  "Nothing selected": "කිසිවක් තෝරා නැත",
   "Oldest": "පැරණිතම",
   "Oldest first": "පැරණිතම පළමුව",
   "Only folders can be pinned.": "ෆෝල්ඩර පමණක් අමුණා තැබිය හැකිය.",
@@ -365,6 +367,7 @@
   "Show as list": "ලැයිස්තුවක් ලෙස පෙන්වන්න",
   "Show hidden files": "සැඟවුණු ගොනු පෙන්වන්න",
   "Show in Home": "මුල් පිටුවේ පෙන්වන්න",
+  "Show or hide the details pane": "විස්තර පුවරුව පෙන්වන්න හෝ සඟවන්න",
   "Show these shortcuts": "මෙම කෙටිමං පෙන්වන්න",
   "Sidebar, panes and details": "පැති තීරුව, කොටස් සහ විස්තර",
   "Sign in": "ඇතුළු වන්න",

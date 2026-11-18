@@ -62,6 +62,7 @@ Rectangle {
             [qsTr("Duplicate"), [["Ctrl", "Shift", "D"]]],
             [qsTr("New folder"), [["Ctrl", "Shift", "N"]]],
             [qsTr("Preview the selected file"), [["Space"]]],
+            [qsTr("Show or hide the details pane"), [["Ctrl", "I"]]],
             [qsTr("Move to the trash"), [["Delete"]]],
             [qsTr("Delete permanently (asks first)"), [["Shift", "Delete"]]],
             [qsTr("Undo / redo"), [["Ctrl", "Z"], ["Ctrl", "Shift", "Z"]]],

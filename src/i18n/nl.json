@@ -144,6 +144,7 @@
     "one": "%Ln item verwijderen…",
     "other": "%Ln items verwijderen…"
   },
+  "Details": "Details",
   "Devices": "Apparaten",
   "Dimensions": "Afmetingen",
   "Dismiss": "Sluiten",
@@ -257,6 +258,7 @@
   "No matches": "Geen resultaten",
   "No preview for this type. Press ⏎ to open it.": "Geen voorbeeld voor dit type. Druk op ⏎ om het te openen.",
   "Nothing matches “%1”": "Niets komt overeen met “%1”",
+  "Nothing selected": "Niets geselecteerd",
   "Oldest": "Oudste",
   "Oldest first": "Oudste eerst",
   "Only folders can be pinned.": "Alleen mappen kunnen worden vastgezet.",
@@ -365,6 +367,7 @@
   "Show as list": "Als lijst weergeven",
   "Show hidden files": "Verborgen bestanden weergeven",
   "Show in Home": "Tonen in Persoonlijke map",
+  "Show or hide the details pane": "Detailvenster weergeven of verbergen",
   "Show these shortcuts": "Deze sneltoetsen weergeven",
   "Sidebar, panes and details": "Zijbalk, deelvensters en details",
   "Sign in": "Aanmelden",

@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "正在刪除 %Ln 個項目…"
   },
+  "Details": "詳細資料",
   "Devices": "裝置",
   "Dimensions": "尺寸",
   "Dismiss": "忽略",
@@ -238,6 +239,7 @@
   "No matches": "沒有相符項目",
   "No preview for this type. Press ⏎ to open it.": "此類型沒有預覽。按 ⏎ 開啟。",
   "Nothing matches “%1”": "沒有符合「%1」的項目",
+  "Nothing selected": "未選取任何項目",
   "Oldest": "最舊",
   "Oldest first": "由舊到新",
   "Only folders can be pinned.": "只能釘選資料夾。",
@@ -336,6 +338,7 @@
   "Show as list": "以清單顯示",
   "Show hidden files": "顯示隱藏檔案",
   "Show in Home": "在家目錄中顯示",
+  "Show or hide the details pane": "顯示或隱藏詳細資訊窗格",
   "Show these shortcuts": "顯示這些快速鍵",
   "Sidebar, panes and details": "側邊欄、窗格與詳細資訊",
   "Sign in": "登入",

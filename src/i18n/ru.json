@@ -160,6 +160,7 @@
     "many": "Удаляется %Ln объектов…",
     "other": "Удаляется %Ln объекта…"
   },
+  "Details": "Подробности",
   "Devices": "Устройства",
   "Dimensions": "Размеры",
   "Dismiss": "Закрыть",
@@ -295,6 +296,7 @@
   "No matches": "Нет совпадений",
   "No preview for this type. Press ⏎ to open it.": "Для этого типа нет предпросмотра. Нажмите ⏎, чтобы открыть.",
   "Nothing matches “%1”": "Ничего не соответствует «%1»",
+  "Nothing selected": "Ничего не выбрано",
   "Oldest": "Самые старые",
   "Oldest first": "Сначала старые",
   "Only folders can be pinned.": "Закреплять можно только папки.",
@@ -423,6 +425,7 @@
   "Show as list": "Показать списком",
   "Show hidden files": "Показать скрытые файлы",
   "Show in Home": "Показать в домашней папке",
+  "Show or hide the details pane": "Показать или скрыть панель сведений",
   "Show these shortcuts": "Показать эти сочетания клавиш",
   "Sidebar, panes and details": "Боковая панель, панели и сведения",
   "Sign in": "Войти",

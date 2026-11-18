@@ -152,6 +152,7 @@
     "many": "Excluindo %Ln itens…",
     "other": "Excluindo %Ln itens…"
   },
+  "Details": "Detalhes",
   "Devices": "Dispositivos",
   "Dimensions": "Dimensões",
   "Dismiss": "Dispensar",
@@ -276,6 +277,7 @@
   "No matches": "Nenhuma correspondência",
   "No preview for this type. Press ⏎ to open it.": "Sem pré-visualização para este tipo. Pressione ⏎ para abrir.",
   "Nothing matches “%1”": "Nada corresponde a “%1”",
+  "Nothing selected": "Nada selecionado",
   "Oldest": "Mais antigos",
   "Oldest first": "Mais antigos primeiro",
   "Only folders can be pinned.": "Apenas pastas podem ser fixadas.",
@@ -394,6 +396,7 @@
   "Show as list": "Mostrar em lista",
   "Show hidden files": "Mostrar arquivos ocultos",
   "Show in Home": "Mostrar na Pasta pessoal",
+  "Show or hide the details pane": "Mostrar ou ocultar o painel de detalhes",
   "Show these shortcuts": "Mostrar estes atalhos",
   "Sidebar, panes and details": "Barra lateral, painéis e detalhes",
   "Sign in": "Entrar",

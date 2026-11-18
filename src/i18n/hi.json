@@ -144,6 +144,7 @@
     "one": "एक आइटम हटाया जा रहा है…",
     "other": "%Ln आइटम हटाए जा रहे हैं…"
   },
+  "Details": "विवरण",
   "Devices": "डिवाइस",
   "Dimensions": "आयाम",
   "Dismiss": "ख़ारिज करें",
@@ -257,6 +258,7 @@
   "No matches": "कोई मेल नहीं",
   "No preview for this type. Press ⏎ to open it.": "इस प्रकार के लिए कोई पूर्वावलोकन नहीं है। खोलने के लिए ⏎ दबाएँ।",
   "Nothing matches “%1”": "“%1” से कुछ भी मेल नहीं खाता",
+  "Nothing selected": "कुछ भी नहीं चुना गया",
   "Oldest": "सबसे पुराना",
   "Oldest first": "सबसे पुराना पहले",
   "Only folders can be pinned.": "सिर्फ़ फ़ोल्डर ही पिन किए जा सकते हैं।",
@@ -365,6 +367,7 @@
   "Show as list": "सूची में दिखाएँ",
   "Show hidden files": "छिपी हुई फ़ाइलें दिखाएँ",
   "Show in Home": "होम में दिखाएँ",
+  "Show or hide the details pane": "विवरण फलक दिखाएँ या छिपाएँ",
   "Show these shortcuts": "ये शॉर्टकट दिखाएँ",
   "Sidebar, panes and details": "साइडबार, फलक और विवरण",
   "Sign in": "साइन इन करें",

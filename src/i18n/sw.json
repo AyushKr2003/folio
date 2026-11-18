@@ -144,6 +144,7 @@
     "one": "Inafuta %Ln kipengee…",
     "other": "Inafuta %Ln vipengee…"
   },
+  "Details": "Maelezo",
   "Devices": "Vifaa",
   "Dimensions": "Vipimo",
   "Dismiss": "Puuza",
@@ -257,6 +258,7 @@
   "No matches": "Hakuna yanayolingana",
   "No preview for this type. Press ⏎ to open it.": "Hakuna hakiki kwa aina hii. Bonyeza ⏎ ili kuifungua.",
   "Nothing matches “%1”": "Hakuna kinacholingana na “%1”",
+  "Nothing selected": "Hakuna kilichochaguliwa",
   "Oldest": "Ya zamani zaidi",
   "Oldest first": "Ya zamani zaidi kwanza",
   "Only folders can be pinned.": "Folda tu ndizo zinazoweza kubandikwa.",
@@ -365,6 +367,7 @@
   "Show as list": "Onyesha kama orodha",
   "Show hidden files": "Onyesha faili zilizofichwa",
   "Show in Home": "Onyesha Nyumbani",
+  "Show or hide the details pane": "Onyesha au ficha kidirisha cha maelezo",
   "Show these shortcuts": "Onyesha mikato hii",
   "Sidebar, panes and details": "Upau wa kando, sehemu na maelezo",
   "Sign in": "Ingia",

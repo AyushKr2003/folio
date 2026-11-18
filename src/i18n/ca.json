@@ -152,6 +152,7 @@
     "many": "S'està eliminant %Ln elements…",
     "other": "S'està eliminant %Ln elements…"
   },
+  "Details": "Detalls",
   "Devices": "Dispositius",
   "Dimensions": "Dimensions",
   "Dismiss": "Descarta",
@@ -276,6 +277,7 @@
   "No matches": "Cap coincidència",
   "No preview for this type. Press ⏎ to open it.": "No hi ha vista prèvia per a aquest tipus. Prem ⏎ per obrir-lo.",
   "Nothing matches “%1”": "Res no coincideix amb «%1»",
+  "Nothing selected": "Cap element seleccionat",
   "Oldest": "Més antics",
   "Oldest first": "Més antics primer",
   "Only folders can be pinned.": "Només es poden fixar carpetes.",
@@ -394,6 +396,7 @@
   "Show as list": "Mostra com a llista",
   "Show hidden files": "Mostra els fitxers ocults",
   "Show in Home": "Mostra a Inici",
+  "Show or hide the details pane": "Mostra o oculta el panell de detalls",
   "Show these shortcuts": "Mostra aquestes dreceres",
   "Sidebar, panes and details": "Barra lateral, panells i detalls",
   "Sign in": "Inicia la sessió",

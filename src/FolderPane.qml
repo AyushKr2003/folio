@@ -20,6 +20,9 @@ FocusScope {
     // How far this pane's path bar reaches left, over the sidebar, so the
     // first pane's path starts at the window's edge.
     property int barLeft: 0
+    // How far this pane's path bar reaches right, over the grid's details
+    // pane, so the rightmost pane's buttons sit at the window's edge.
+    property int barExtension: 0
     // The columns' details column, while it shows a file, for Tab to reach.
     readonly property var details: view.item && view.item.details ? view.item.details : null
 
@@ -477,8 +480,11 @@ FocusScope {
     // the sidebar is on the right.
     PathBar {
         id: pathBar
-        x: LayoutMirroring.enabled ? 0 : -pane.barLeft
-        width: pane.barLeft + pane.width
+        x: LayoutMirroring.enabled ? -pane.barExtension : -pane.barLeft
+        width: pane.barLeft + pane.width + pane.barExtension
+        previewVisible: pane.host ? pane.host.previewVisible : true
+        previewFits: pane.host ? pane.host.detailsFit : true
+        onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
         onEditDone: pane.focusView()
         viewMode: pane.viewMode
         closable: pane.closable

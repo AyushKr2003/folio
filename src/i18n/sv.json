@@ -144,6 +144,7 @@
     "one": "Tar bort %Ln objekt…",
     "other": "Tar bort %Ln objekt…"
   },
+  "Details": "Detaljer",
   "Devices": "Enheter",
   "Dimensions": "Dimensioner",
   "Dismiss": "Avfärda",
@@ -257,6 +258,7 @@
   "No matches": "Inga träffar",
   "No preview for this type. Press ⏎ to open it.": "Ingen förhandsvisning för den här typen. Tryck på ⏎ för att öppna den.",
   "Nothing matches “%1”": "Inget matchar “%1”",
+  "Nothing selected": "Inget markerat",
   "Oldest": "Äldst",
   "Oldest first": "Äldsta först",
   "Only folders can be pinned.": "Endast mappar kan fästas.",
@@ -365,6 +367,7 @@
   "Show as list": "Visa som lista",
   "Show hidden files": "Visa dolda filer",
   "Show in Home": "Visa i Hem",
+  "Show or hide the details pane": "Visa eller dölj detaljpanelen",
   "Show these shortcuts": "Visa dessa kortkommandon",
   "Sidebar, panes and details": "Sidopanel, paneler och detaljer",
   "Sign in": "Logga in",

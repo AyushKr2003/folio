@@ -8,6 +8,10 @@ Rectangle {
     id: bar
 
     property string viewMode: "grid"
+    // The grid's details pane on the window's right: whether it's on, and
+    // whether the window has room for it.
+    property bool previewVisible: true
+    property bool previewFits: true
     // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
     // server's address), Escape cancels, Tab completes a folder name.
     property bool editing: false
@@ -18,6 +22,7 @@ Rectangle {
     // shortcuts without knowing the key that shows them.
     property bool showsHelp: false
     signal helpRequested()
+    signal togglePreview()
     signal cycleView()
     signal editDone()
 
@@ -300,6 +305,14 @@ Rectangle {
             // A press on the button it opens under is left to the button's
             // click, which closes it.
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        }
+        IconButton {
+            glyph: "preview"
+            // The columns have their own details column, and the list none.
+            visible: bar.viewMode === "grid" && bar.previewFits
+            text: qsTr("Details")
+            active: bar.previewVisible
+            onClicked: bar.togglePreview()
         }
         IconButton {
             visible: bar.closable

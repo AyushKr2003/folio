@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "%Ln 項目を削除中…"
   },
+  "Details": "詳細",
   "Devices": "デバイス",
   "Dimensions": "寸法",
   "Dismiss": "閉じる",
@@ -238,6 +239,7 @@
   "No matches": "一致するものがありません",
   "No preview for this type. Press ⏎ to open it.": "この種類のプレビューはありません。⏎ を押して開いてください。",
   "Nothing matches “%1”": "“%1” に一致するものがありません",
+  "Nothing selected": "何も選択されていません",
   "Oldest": "最古",
   "Oldest first": "古い順",
   "Only folders can be pinned.": "フォルダーのみピン留めできます。",
@@ -336,6 +338,7 @@
   "Show as list": "リスト表示",
   "Show hidden files": "隠しファイルを表示",
   "Show in Home": "ホームに表示",
+  "Show or hide the details pane": "詳細ペインの表示を切り替え",
   "Show these shortcuts": "これらのショートカットを表示",
   "Sidebar, panes and details": "サイドバー、ペイン、詳細",
   "Sign in": "サインイン",

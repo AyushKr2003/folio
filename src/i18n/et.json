@@ -144,6 +144,7 @@
     "one": "%Ln üksuse kustutamine…",
     "other": "%Ln üksuste kustutamine…"
   },
+  "Details": "Üksikasjad",
   "Devices": "Seadmed",
   "Dimensions": "Mõõtmed",
   "Dismiss": "Sulge",
@@ -257,6 +258,7 @@
   "No matches": "Vasteid pole",
   "No preview for this type. Press ⏎ to open it.": "Selle tüübi jaoks eelvaade puudub. Avamiseks vajuta ⏎.",
   "Nothing matches “%1”": "„%1“ vasteid pole",
+  "Nothing selected": "Midagi pole valitud",
   "Oldest": "Vanim",
   "Oldest first": "Vanimad esimesena",
   "Only folders can be pinned.": "Ainult kaustu saab kinnitada.",
@@ -365,6 +367,7 @@
   "Show as list": "Kuva loendina",
   "Show hidden files": "Kuva peidetud failid",
   "Show in Home": "Kuva kodukaustas",
+  "Show or hide the details pane": "Kuva või peida üksikasjade paan",
   "Show these shortcuts": "Kuva need otseteed",
   "Sidebar, panes and details": "Külgriba, paanid ja üksikasjad",
   "Sign in": "Logi sisse",
