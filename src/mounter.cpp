@@ -181,6 +181,10 @@ Mounter::Mounter(QObject *parent) : QObject(parent) {}
 Mounter::~Mounter() {
     // A prompt nobody will answer any more would keep GVfs waiting.
     cancel();
+    // Nor is a drive's mount past its passphrase reported to anyone; left
+    // running, one with nothing to mount inside would wait for good.
+    if (m_cancellable)
+        g_cancellable_cancel(m_cancellable);
     if (m_operation)
         g_signal_handlers_disconnect_by_data(m_operation, this);
     finish();

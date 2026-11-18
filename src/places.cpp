@@ -466,6 +466,9 @@ void Places::refreshDevices() {
     // next reading, never a pile of them, and never the window.
     if (m_mounts.isRunning()) {
         m_rereadMounts = true;
+        // A drive come or gone shows now, from the last reading; what's free
+        // on it waits for the next.
+        publishDevices();
         return;
     }
     // In a pool that's never torn down: Qt's own waits for its work on the
@@ -485,14 +488,19 @@ void Places::mountsRead() {
             mount.canUnmount = g_mount_can_unmount(gmount);
             g_object_unref(gmount);
         }
-    const QVariantList physical = physicalDrives(mounts, m_systemDevice);
-    const QVariantList devices = m_drives ? devicesFrom(m_drives->volumes(), physical, mounts) : physical;
+    m_lastMounts = mounts;
+    publishDevices();
+    if (std::exchange(m_rereadMounts, false))
+        refreshDevices();
+}
+
+void Places::publishDevices() {
+    const QVariantList physical = physicalDrives(m_lastMounts, m_systemDevice);
+    const QVariantList devices = m_drives ? devicesFrom(m_drives->volumes(), physical, m_lastMounts) : physical;
     if (devices != m_devices) {
         m_devices = devices;
         emit changed();
     }
-    if (std::exchange(m_rereadMounts, false))
-        refreshDevices();
 }
 
 void Places::leave(const QString &root) {
