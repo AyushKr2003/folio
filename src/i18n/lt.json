@@ -152,6 +152,7 @@
     "few": "Ištrinami %Ln elementai…",
     "other": "Ištrinama %Ln elementų…"
   },
+  "Details": "Išsami informacija",
   "Devices": "Įrenginiai",
   "Dimensions": "Matmenys",
   "Dismiss": "Atmesti",
@@ -276,6 +277,7 @@
   "No matches": "Nėra atitikmenų",
   "No preview for this type. Press ⏎ to open it.": "Nėra šio tipo peržiūros. Paspauskite ⏎, kad atidarytumėte.",
   "Nothing matches “%1”": "Niekas neatitinka „%1“",
+  "Nothing selected": "Nieko nepasirinkta",
   "Oldest": "Seniausi",
   "Oldest first": "Pirmiausia seniausi",
   "Only folders can be pinned.": "Prisegti galima tik aplankus.",
@@ -394,6 +396,7 @@
   "Show as list": "Rodyti sąrašu",
   "Show hidden files": "Rodyti paslėptus failus",
   "Show in Home": "Rodyti pradžios aplanke",
+  "Show or hide the details pane": "Rodyti arba slėpti išsamios informacijos sritį",
   "Show these shortcuts": "Rodyti šiuos sparčiuosius klavišus",
   "Sidebar, panes and details": "Šoninė juosta, sritys ir išsami informacija",
   "Sign in": "Prisijungti",

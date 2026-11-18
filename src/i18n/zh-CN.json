@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "正在删除 %Ln 个项目…"
   },
+  "Details": "详情",
   "Devices": "设备",
   "Dimensions": "尺寸",
   "Dismiss": "忽略",
@@ -238,6 +239,7 @@
   "No matches": "无匹配项",
   "No preview for this type. Press ⏎ to open it.": "此类型无预览。按 ⏎ 打开。",
   "Nothing matches “%1”": "没有与“%1”匹配的内容",
+  "Nothing selected": "未选择任何项目",
   "Oldest": "最旧",
   "Oldest first": "最旧优先",
   "Only folders can be pinned.": "只能固定文件夹。",
@@ -336,6 +338,7 @@
   "Show as list": "显示为列表",
   "Show hidden files": "显示隐藏文件",
   "Show in Home": "在主文件夹中显示",
+  "Show or hide the details pane": "显示或隐藏详情窗格",
   "Show these shortcuts": "显示这些快捷键",
   "Sidebar, panes and details": "侧边栏、窗格和详情",
   "Sign in": "登录",

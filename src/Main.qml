@@ -58,7 +58,15 @@ ApplicationWindow {
     onHelpVisibleChanged: helpVisible ? help.forceActiveFocus() : activePane.focusView()
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
+    // The details pane on the right, in the grid (the columns show the
+    // details as their last column). Ctrl+I or the path bar's button.
+    property bool previewVisible: true
     property real zoom: 1
+    // Whether the window is wide enough for the details pane at all.
+    readonly property bool detailsFit: width >= (split ? 1400 : 960)
+    readonly property bool detailsShown: previewVisible && detailsFit && !!activePane && activePane.viewMode === "grid"
+    // The rightmost pane's path bar reaches over the details pane.
+    readonly property int detailsWidth: detailsShown ? 301 : 0
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -78,6 +86,7 @@ ApplicationWindow {
     Settings {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
+        property alias previewVisible: win.previewVisible
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -92,6 +101,7 @@ ApplicationWindow {
             rightPane.closable = true
             rightPane.viewMode = activePane.viewMode
             rightPane.zoom = activePane.zoom
+            rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }
         rightPane.focusView()
@@ -110,6 +120,7 @@ ApplicationWindow {
     Shortcut { sequence: "Q"; enabled: !win.typing; onActivated: win.close() }
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
+    Shortcut { sequence: "Ctrl+I"; enabled: !win.typing; onActivated: win.previewVisible = !win.previewVisible }
     // Tab moves the keyboard: sidebar, left pane and its details column
     // (while there's an app to pick there), right pane and its details, and
     // around. Shift+Tab goes back.
@@ -128,6 +139,11 @@ ApplicationWindow {
                 stops.push(pane.details)
                 details.push(pane.details)
             }
+        }
+        const side = sideDetails.item
+        if (side && side.takesKeyboard) {
+            stops.push(side)
+            details.push(side)
         }
         if (bar)
             stops.push(bar)
@@ -185,6 +201,7 @@ ApplicationWindow {
             FolderPane {
                 id: leftPane
                 barLeft: sidebar.width + 1
+                barExtension: win.split ? 0 : win.detailsWidth
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 focus: true
@@ -199,6 +216,43 @@ ApplicationWindow {
                 visible: win.split
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+            }
+
+            // The grid's details pane, following the pane used last. Made
+            // only while shown, so it reads nothing for a hidden pane.
+            Rectangle {
+                visible: win.detailsShown
+                Layout.topMargin: parent.parent.barHeight
+                Layout.fillHeight: true
+                implicitWidth: 1
+                color: Qt.alpha(theme.foreground, 0.12)
+            }
+            Loader {
+                id: sideDetails
+                active: win.detailsShown
+                visible: active
+                Layout.topMargin: parent.parent.barHeight
+                Layout.preferredWidth: 300
+                Layout.fillHeight: true
+                sourceComponent: Rectangle {
+                    readonly property alias takesKeyboard: sidePane.takesKeyboard
+                    readonly property alias hasKeyboard: sidePane.hasKeyboard
+                    function focusKeyboard() { sidePane.focusKeyboard() }
+                    color: theme.darkBackground
+                    PreviewPane {
+                        id: sidePane
+                        anchors.fill: parent
+                        folderPane: win.activePane
+                        onFinished: win.activePane.focusView()
+                        Component.onCompleted: Qt.callLater(describe)
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        visible: !sidePane.hasItem
+                        text: qsTr("Nothing selected")
+                        color: theme.secondaryForeground
+                    }
+                }
             }
         }
 

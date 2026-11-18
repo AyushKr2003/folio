@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "Memadam %Ln item…"
   },
+  "Details": "Butiran",
   "Devices": "Peranti",
   "Dimensions": "Dimensi",
   "Dismiss": "Abai",
@@ -238,6 +239,7 @@
   "No matches": "Tiada padanan",
   "No preview for this type. Press ⏎ to open it.": "Tiada pratonton untuk jenis ini. Tekan ⏎ untuk membukanya.",
   "Nothing matches “%1”": "Tiada yang sepadan dengan “%1”",
+  "Nothing selected": "Tiada yang dipilih",
   "Oldest": "Terlama",
   "Oldest first": "Terlama dahulu",
   "Only folders can be pinned.": "Hanya folder boleh dipin.",
@@ -336,6 +338,7 @@
   "Show as list": "Paparkan sebagai senarai",
   "Show hidden files": "Paparkan fail tersembunyi",
   "Show in Home": "Tunjukkan dalam Laman Utama",
+  "Show or hide the details pane": "Paparkan atau sembunyikan panel butiran",
   "Show these shortcuts": "Paparkan pintasan ini",
   "Sidebar, panes and details": "Bar sisi, anak tetingkap dan butiran",
   "Sign in": "Log masuk",

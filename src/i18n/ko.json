@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "%Ln개 항목 삭제 중…"
   },
+  "Details": "세부 정보",
   "Devices": "장치",
   "Dimensions": "크기",
   "Dismiss": "닫기",
@@ -238,6 +239,7 @@
   "No matches": "일치 항목 없음",
   "No preview for this type. Press ⏎ to open it.": "이 유형은 미리볼 수 없습니다. 열려면 ⏎를 누르세요.",
   "Nothing matches “%1”": "“%1”와(과) 일치하는 항목이 없습니다",
+  "Nothing selected": "선택한 항목 없음",
   "Oldest": "가장 오래된",
   "Oldest first": "오래된 순",
   "Only folders can be pinned.": "폴더만 고정할 수 있습니다.",
@@ -336,6 +338,7 @@
   "Show as list": "목록으로 보기",
   "Show hidden files": "숨김 파일 표시",
   "Show in Home": "홈에 표시",
+  "Show or hide the details pane": "세부 정보 창 표시 또는 숨기기",
   "Show these shortcuts": "이 단축키 표시",
   "Sidebar, panes and details": "사이드바, 창 및 세부 정보",
   "Sign in": "로그인",

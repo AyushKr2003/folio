@@ -152,6 +152,7 @@
     "few": "Брисање %Ln ставке…",
     "other": "Брисање %Ln ставки…"
   },
+  "Details": "Детаљи",
   "Devices": "Уређаји",
   "Dimensions": "Димензије",
   "Dismiss": "Одбаци",
@@ -276,6 +277,7 @@
   "No matches": "Нема подударања",
   "No preview for this type. Press ⏎ to open it.": "Нема прегледа за ову врсту. Притисни ⏎ за отварање.",
   "Nothing matches “%1”": "Ништа се не подудара са “%1”",
+  "Nothing selected": "Ништа није изабрано",
   "Oldest": "Најстарије",
   "Oldest first": "Најстарије прво",
   "Only folders can be pinned.": "Могу се закачити само фасцикле.",
@@ -394,6 +396,7 @@
   "Show as list": "Прикажи као листу",
   "Show hidden files": "Прикажи скривене датотеке",
   "Show in Home": "Прикажи у Почетној",
+  "Show or hide the details pane": "Прикажи или сакриј окно са детаљима",
   "Show these shortcuts": "Прикажи ове пречице",
   "Sidebar, panes and details": "Бочна трака, окна и детаљи",
   "Sign in": "Пријави се",

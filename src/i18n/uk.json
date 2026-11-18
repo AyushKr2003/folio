@@ -160,6 +160,7 @@
     "many": "Видаляється %Ln елементів…",
     "other": "Видаляється %Ln елемента…"
   },
+  "Details": "Подробиці",
   "Devices": "Пристрої",
   "Dimensions": "Розміри",
   "Dismiss": "Відхилити",
@@ -295,6 +296,7 @@
   "No matches": "Немає збігів",
   "No preview for this type. Press ⏎ to open it.": "Немає попереднього перегляду для цього типу. Натисніть ⏎, щоб відкрити.",
   "Nothing matches “%1”": "Нічого не відповідає «%1»",
+  "Nothing selected": "Нічого не вибрано",
   "Oldest": "Найстаріші",
   "Oldest first": "Спочатку найстаріші",
   "Only folders can be pinned.": "Закріпити можна лише теки.",
@@ -423,6 +425,7 @@
   "Show as list": "Показати списком",
   "Show hidden files": "Показати приховані файли",
   "Show in Home": "Показати в Домівці",
+  "Show or hide the details pane": "Показати або приховати панель відомостей",
   "Show these shortcuts": "Показати ці сполучення клавіш",
   "Sidebar, panes and details": "Бічна панель, панелі та подробиці",
   "Sign in": "Увійти",

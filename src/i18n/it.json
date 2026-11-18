@@ -152,6 +152,7 @@
     "many": "Eliminazione di %Ln elementi…",
     "other": "Eliminazione di %Ln elementi…"
   },
+  "Details": "Dettagli",
   "Devices": "Dispositivi",
   "Dimensions": "Dimensioni",
   "Dismiss": "Ignora",
@@ -276,6 +277,7 @@
   "No matches": "Nessuna corrispondenza",
   "No preview for this type. Press ⏎ to open it.": "Nessuna anteprima per questo tipo. Premi ⏎ per aprirlo.",
   "Nothing matches “%1”": "Nessun risultato per “%1”",
+  "Nothing selected": "Nessuna selezione",
   "Oldest": "Meno recenti",
   "Oldest first": "Prima i meno recenti",
   "Only folders can be pinned.": "Solo le cartelle possono essere fissate.",
@@ -394,6 +396,7 @@
   "Show as list": "Mostra come elenco",
   "Show hidden files": "Mostra file nascosti",
   "Show in Home": "Mostra in Home",
+  "Show or hide the details pane": "Mostra o nascondi il riquadro dei dettagli",
   "Show these shortcuts": "Mostra queste scorciatoie",
   "Sidebar, panes and details": "Barra laterale, riquadri e dettagli",
   "Sign in": "Accedi",

@@ -152,6 +152,7 @@
     "many": "A eliminar %Ln itens…",
     "other": "A eliminar %Ln itens…"
   },
+  "Details": "Detalhes",
   "Devices": "Dispositivos",
   "Dimensions": "Dimensões",
   "Dismiss": "Ignorar",
@@ -276,6 +277,7 @@
   "No matches": "Sem resultados",
   "No preview for this type. Press ⏎ to open it.": "Sem pré-visualização para este tipo. Prima ⏎ para o abrir.",
   "Nothing matches “%1”": "Nada corresponde a “%1”",
+  "Nothing selected": "Nada selecionado",
   "Oldest": "Mais antigo",
   "Oldest first": "Mais antigos primeiro",
   "Only folders can be pinned.": "Só é possível fixar pastas.",
@@ -394,6 +396,7 @@
   "Show as list": "Mostrar como lista",
   "Show hidden files": "Mostrar ficheiros ocultos",
   "Show in Home": "Mostrar em Início",
+  "Show or hide the details pane": "Mostrar ou ocultar o painel de detalhes",
   "Show these shortcuts": "Mostrar estes atalhos",
   "Sidebar, panes and details": "Barra lateral, painéis e detalhes",
   "Sign in": "Iniciar sessão",

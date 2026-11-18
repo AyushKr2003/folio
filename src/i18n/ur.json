@@ -144,6 +144,7 @@
     "one": "ایک آئٹم حذف کیا جا رہا ہے…",
     "other": "%Ln آئٹمز حذف کیے جا رہے ہیں…"
   },
+  "Details": "تفصیلات",
   "Devices": "آلات",
   "Dimensions": "ابعاد",
   "Dismiss": "برخاست کریں",
@@ -257,6 +258,7 @@
   "No matches": "کوئی مماثلت نہیں",
   "No preview for this type. Press ⏎ to open it.": "اس قسم کے لیے کوئی پیش منظر نہیں ہے۔ کھولنے کے لیے ⏎ دبائیں۔",
   "Nothing matches “%1”": "“%1” سے کچھ بھی مماثل نہیں",
+  "Nothing selected": "کچھ منتخب نہیں",
   "Oldest": "قدیم ترین",
   "Oldest first": "پہلے قدیم ترین",
   "Only folders can be pinned.": "صرف فولڈر ہی پن کیے جا سکتے ہیں۔",
@@ -365,6 +367,7 @@
   "Show as list": "فہرست کے طور پر دکھائیں",
   "Show hidden files": "پوشیدہ فائلیں دکھائیں",
   "Show in Home": "ہوم میں دکھائیں",
+  "Show or hide the details pane": "تفصیلات والا پینل دکھائیں یا چھپائیں",
   "Show these shortcuts": "یہ شارٹ کٹس دکھائیں",
   "Sidebar, panes and details": "سائیڈ بار، پینز اور تفصیلات",
   "Sign in": "سائن ان کریں",

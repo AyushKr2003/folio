@@ -144,6 +144,7 @@
     "one": "%Ln Element wird gelöscht…",
     "other": "%Ln Elemente werden gelöscht…"
   },
+  "Details": "Details",
   "Devices": "Geräte",
   "Dimensions": "Abmessungen",
   "Dismiss": "Verwerfen",
@@ -257,6 +258,7 @@
   "No matches": "Keine Treffer",
   "No preview for this type. Press ⏎ to open it.": "Keine Vorschau für diesen Typ. Zum Öffnen ⏎ drücken.",
   "Nothing matches “%1”": "Keine Treffer für „%1“",
+  "Nothing selected": "Nichts ausgewählt",
   "Oldest": "Älteste",
   "Oldest first": "Älteste zuerst",
   "Only folders can be pinned.": "Nur Ordner können angeheftet werden.",
@@ -365,6 +367,7 @@
   "Show as list": "Als Liste anzeigen",
   "Show hidden files": "Versteckte Dateien anzeigen",
   "Show in Home": "In Home anzeigen",
+  "Show or hide the details pane": "Detailbereich ein- oder ausblenden",
   "Show these shortcuts": "Diese Tastaturkürzel anzeigen",
   "Sidebar, panes and details": "Seitenleiste, Bereiche und Details",
   "Sign in": "Anmelden",

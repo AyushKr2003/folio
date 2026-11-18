@@ -152,6 +152,7 @@
     "few": "Se șterg %Ln elemente…",
     "other": "Se șterg %Ln de elemente…"
   },
+  "Details": "Detalii",
   "Devices": "Dispozitive",
   "Dimensions": "Dimensiuni",
   "Dismiss": "Închide",
@@ -276,6 +277,7 @@
   "No matches": "Nicio potrivire",
   "No preview for this type. Press ⏎ to open it.": "Nicio previzualizare pentru acest tip. Apasă ⏎ pentru a-l deschide.",
   "Nothing matches “%1”": "Nimic nu se potrivește cu „%1”",
+  "Nothing selected": "Nimic selectat",
   "Oldest": "Cele mai vechi",
   "Oldest first": "Mai întâi cele mai vechi",
   "Only folders can be pinned.": "Doar dosarele pot fi fixate.",
@@ -394,6 +396,7 @@
   "Show as list": "Afișează ca listă",
   "Show hidden files": "Afișează fișierele ascunse",
   "Show in Home": "Afișează în Acasă",
+  "Show or hide the details pane": "Afișează sau ascunde panoul de detalii",
   "Show these shortcuts": "Afișează aceste scurtături",
   "Sidebar, panes and details": "Bară laterală, panouri și detalii",
   "Sign in": "Conectează-te",

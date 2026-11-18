@@ -168,6 +168,7 @@
     "many": "Ag scriosadh %Ln mír…",
     "other": "Ag scriosadh %Ln míreanna…"
   },
+  "Details": "Sonraí",
   "Devices": "Gléasanna",
   "Dimensions": "Toisí",
   "Dismiss": "Díbhe",
@@ -314,6 +315,7 @@
   "No matches": "Gan aon mheaitseálacha",
   "No preview for this type. Press ⏎ to open it.": "Gan réamhamharc don chineál seo. Brúigh ⏎ chun é a oscailt.",
   "Nothing matches “%1”": "Ní mheaitseálann aon rud le “%1”",
+  "Nothing selected": "Níor roghnaíodh aon rud",
   "Oldest": "Is sine",
   "Oldest first": "Is sine ar dtús",
   "Only folders can be pinned.": "Ní féidir ach fillteáin a phionnáil.",
@@ -452,6 +454,7 @@
   "Show as list": "Taispeáin mar liosta",
   "Show hidden files": "Taispeáin comhaid fholaithe",
   "Show in Home": "Taispeáin sa Bhaile",
+  "Show or hide the details pane": "Taispeáin nó folaigh pána na sonraí",
   "Show these shortcuts": "Taispeáin na haicearraí seo",
   "Sidebar, panes and details": "Barra taoibh, pánaí agus sonraí",
   "Sign in": "Logáil isteach",

@@ -136,6 +136,7 @@
   "Deleting %Ln items…": {
     "other": "กำลังลบ %Ln รายการ…"
   },
+  "Details": "รายละเอียด",
   "Devices": "อุปกรณ์",
   "Dimensions": "ขนาดภาพ",
   "Dismiss": "ปิด",
@@ -238,6 +239,7 @@
   "No matches": "ไม่พบรายการที่ตรงกัน",
   "No preview for this type. Press ⏎ to open it.": "ไม่มีตัวอย่างสำหรับประเภทนี้ กด ⏎ เพื่อเปิด",
   "Nothing matches “%1”": "ไม่มีอะไรตรงกับ “%1”",
+  "Nothing selected": "ยังไม่ได้เลือกอะไร",
   "Oldest": "เก่าสุด",
   "Oldest first": "เก่าสุดก่อน",
   "Only folders can be pinned.": "ปักหมุดได้เฉพาะโฟลเดอร์เท่านั้น",
@@ -336,6 +338,7 @@
   "Show as list": "แสดงแบบรายการ",
   "Show hidden files": "แสดงไฟล์ที่ซ่อนไว้",
   "Show in Home": "แสดงในโฟลเดอร์บ้าน",
+  "Show or hide the details pane": "แสดงหรือซ่อนแผงรายละเอียด",
   "Show these shortcuts": "แสดงทางลัดเหล่านี้",
   "Sidebar, panes and details": "แถบด้านข้าง บานหน้าต่าง และรายละเอียด",
   "Sign in": "ลงชื่อเข้าใช้",

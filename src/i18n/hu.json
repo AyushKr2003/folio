@@ -144,6 +144,7 @@
     "one": "%Ln elem törlése…",
     "other": "%Ln elem törlése…"
   },
+  "Details": "Részletek",
   "Devices": "Eszközök",
   "Dimensions": "Méretek",
   "Dismiss": "Elvetés",
@@ -257,6 +258,7 @@
   "No matches": "Nincs találat",
   "No preview for this type. Press ⏎ to open it.": "Ehhez a típushoz nincs előnézet. A megnyitáshoz nyomja meg a ⏎ billentyűt.",
   "Nothing matches “%1”": "Nincs találat a következőre: „%1”",
+  "Nothing selected": "Nincs kijelölve semmi",
   "Oldest": "Legrégebbi",
   "Oldest first": "Legrégebbi elöl",
   "Only folders can be pinned.": "Csak mappák tűzhetők ki.",
@@ -365,6 +367,7 @@
   "Show as list": "Listanézet",
   "Show hidden files": "Rejtett fájlok megjelenítése",
   "Show in Home": "Megjelenítés a Saját mappában",
+  "Show or hide the details pane": "A részletek panel megjelenítése vagy elrejtése",
   "Show these shortcuts": "Billentyűparancsok megjelenítése",
   "Sidebar, panes and details": "Oldalsáv, panelek és részletek",
   "Sign in": "Bejelentkezés",
