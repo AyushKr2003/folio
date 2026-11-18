@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "mounter.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -81,10 +82,12 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
 
 } // namespace
 
-Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
+Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories,
+                       const QString &remoteRoot)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
-                  : cacheDirectory) {
+                  : cacheDirectory),
+      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -342,7 +345,18 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     if (!scratch.isValid())
         return {};
     const QString output = scratch.filePath("thumbnail.png");
-    QStringList args = expandCommand(command, path, output, pixels);
+    // A thumbnailer given a URI asks GIO for the file, and GIO turns one on
+    // a GVfs mount (another machine's) back into its network address,
+    // sftp://…, which most can't open, Papers' among them. A link here reads
+    // through the mount the same, and GIO leaves it a file.
+    QString input = path;
+    if (path.startsWith(m_remoteRoot + "/")) {
+        const QString suffix = QFileInfo(path).suffix();
+        const QString link = scratch.filePath(suffix.isEmpty() ? "input" : "input." + suffix);
+        if (QFile::link(path, link))
+            input = link;
+    }
+    QStringList args = expandCommand(command, input, output, pixels);
     if (args.isEmpty())
         return {};
     const QString program = args.takeFirst();
@@ -370,14 +384,20 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
     save(std::move(image), cachePath(path, size), path, modified);
 }
 
+// Markers say which round of thumbnailing failed: ones from before a fix
+// (round 2: files on other machines) are tried again once.
+static const QString failedRound = QStringLiteral("2");
+
 void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
+    marker.setText("X-Folio::Round", failedRound);
     save(std::move(marker), failPath(path), path, modified);
 }
 
 bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
-    return madeFor(QImage(failPath(path)), modified);
+    const QImage marker(failPath(path));
+    return madeFor(marker, modified) && marker.text("X-Folio::Round") == failedRound;
 }
 
 // Whether a cached thumbnail (or failure marker) was made from the file as it
@@ -422,6 +442,23 @@ public:
     }
 
     void run() override {
+        // A decoder that throws (LibRaw on a camera RAW it can't read, #164)
+        // must not take Folio down: an exception out of a pool thread ends
+        // the process. The file gets no thumbnail instead; once finished()
+        // has been told, the response may be gone, so it's left alone.
+        bool told = false;
+        try {
+            work(told);
+        } catch (...) {
+            if (!told) {
+                m_image = QImage();
+                m_error = QStringLiteral("No thumbnail");
+                emit finished();
+            }
+        }
+    }
+
+    void work(bool &told) {
         // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>, or
         // page/<size>/<modified>/<paper>/<ink>/<url-encoded path> for text.
         // The time is only there to tell Qt's own cache apart; load() checks
@@ -443,6 +480,7 @@ public:
             const Thumbnails *thumbnails = m_thumbnails;
             if (m_image.isNull())
                 m_error = QStringLiteral("No picture");
+            told = true;
             emit finished();
             if (!made.isNull())
                 thumbnails->keep(made, path, pixels, modified);
@@ -460,6 +498,7 @@ public:
         }
         if (m_image.isNull())
             m_error = QStringLiteral("No thumbnail");
+        told = true;
         emit finished();
     }
 

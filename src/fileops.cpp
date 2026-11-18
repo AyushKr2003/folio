@@ -1969,6 +1969,57 @@ static QString mimeFor(const QString &path) {
     return QFileInfo(path).isDir() ? QStringLiteral("inode/directory") : QMimeDatabase().mimeTypeForFile(path).name();
 }
 
+QString FileOps::omarchyEditor() {
+    QFile setting(QDir::homePath() + "/.local/state/omarchy/defaults/editor");
+    QString editor = setting.open(QIODevice::ReadOnly) ? QString::fromUtf8(setting.readLine()).trimmed() : QString();
+    // sublime-text-4 ships subl; older settings say sublime_text.
+    if (editor == "sublime_text")
+        editor = "subl";
+    if (editor.isEmpty() || QStandardPaths::findExecutable(editor).isEmpty())
+        editor = "nvim";
+    return editor;
+}
+
+QString FileOps::editorAppName(const QVariantList &apps) {
+    const QString editor = omarchyEditor();
+    for (const QVariant &app : apps)
+        if (QFileInfo(app.toMap().value("executable").toString()).fileName() == editor)
+            return app.toMap().value("name").toString();
+    return {};
+}
+
+QVariantList FileOps::foldHandlerRepeats(QVariantList apps) {
+    if (apps.isEmpty() || apps.first().toMap().value("id") != "omarchy-launch-editor.desktop"
+        || !apps.first().toMap().value("isDefault").toBool())
+        return apps;
+    const QString name = apps.first().toMap().value("name").toString();
+    for (qsizetype i = apps.size() - 1; i > 0; --i)
+        if (apps.at(i).toMap().value("name").toString() == name)
+            apps.removeAt(i);
+    return apps;
+}
+
+// An app's name, except Omarchy's editor handler, which opens text files in
+// the editor picked under Setup > Default > Editor: it's named after that
+// editor (Visual Studio Code, Neovim), found as the app that runs it, rather
+// than its own "Editor".
+static QString appName(GAppInfo *app) {
+    const QString own = QString::fromUtf8(g_app_info_get_name(app));
+    if (qstrcmp(g_app_info_get_id(app), "omarchy-launch-editor.desktop") != 0)
+        return own;
+    QVariantList visible;
+    GList *all = g_app_info_get_all();
+    for (GList *l = all; l; l = l->next) {
+        auto *info = G_APP_INFO(l->data);
+        if (const char *executable = g_app_info_get_executable(info); executable && g_app_info_should_show(info))
+            visible << QVariantMap{{"executable", QString::fromUtf8(executable)},
+                                   {"name", QString::fromUtf8(g_app_info_get_name(info))}};
+    }
+    g_list_free_full(all, g_object_unref);
+    const QString name = FileOps::editorAppName(visible);
+    return name.isEmpty() ? own : name;
+}
+
 QString FileOps::defaultAppName(const QString &mime) {
     if (mime.isEmpty() || mime == "inode/directory")
         return {};
@@ -1979,7 +2030,7 @@ QString FileOps::defaultAppName(const QString &mime) {
     g_free(type);
     if (!app)
         return {};
-    const QString name = QString::fromUtf8(g_app_info_get_name(app));
+    const QString name = appName(app);
     g_object_unref(app);
     return name;
 }
@@ -2039,8 +2090,7 @@ QVariantList FileOps::appsFor(const QString &path) const {
         // even a hidden one (Omarchy's editor handler), so it can be named.
         if (!g_app_info_should_show(info) && id != defaultId)
             continue;
-        const QVariantMap app{{"id", id}, {"name", QString::fromUtf8(g_app_info_get_name(info))},
-                              {"isDefault", id == defaultId}};
+        const QVariantMap app{{"id", id}, {"name", appName(info)}, {"isDefault", id == defaultId}};
         if (id == defaultId)
             apps.prepend(app);
         else
@@ -2048,7 +2098,10 @@ QVariantList FileOps::appsFor(const QString &path) const {
     }
     g_list_free_full(all, g_object_unref);
     g_free(type);
-    return apps;
+    // Named after Neovim, the editor handler and Neovim itself would be two
+    // entries of one name: the handler, which follows the picked editor,
+    // stands for both.
+    return foldHandlerRepeats(apps);
 }
 
 void FileOps::openWith(const QString &path, const QString &appId) {

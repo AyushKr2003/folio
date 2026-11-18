@@ -32,6 +32,7 @@
         <file>FormatDialog.qml</file>
         <file>DriveMenu.qml</file>
         <file>PlaceMenu.qml</file>
+        <file>Spinner.qml</file>
         <file>RenameDialog.qml</file>
         <file>MountPrompt.qml</file>
         <file>PreviewWindow.qml</file>

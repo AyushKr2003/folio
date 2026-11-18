@@ -17,7 +17,10 @@
 // tile asks for it: there is no background crawl.
 class Thumbnails {
 public:
-    explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {});
+    // `remoteRoot` is where GVfs mounts other machines (Mounter::root());
+    // tests give their own.
+    explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {},
+                        const QString &remoteRoot = {});
 
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
@@ -56,6 +59,7 @@ private:
     static bool madeFor(const QImage &image, const QDateTime &modified);
 
     QString m_cache;
+    QString m_remoteRoot;
     QHash<QString, QString> m_thumbnailers;
 };
 

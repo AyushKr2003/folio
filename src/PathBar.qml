@@ -109,8 +109,18 @@ Rectangle {
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
             // Room at the end for where it searches; padding isn't mirrored.
-            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
-            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
+            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 + searchingSpinner.room : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24 + searchingSpinner.room
+            // Turning while the search goes through the folders, beside
+            // where it searches.
+            Spinner {
+                id: searchingSpinner
+                readonly property int room: visible ? width + 10 : 0
+                visible: backend.folder.loading && backend.folder.query.length > 0
+                anchors.right: scope.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+            }
             // Where it searches, at the end of the field. Unlike a
             // placeholder, it stays while typing. Plugins' views have
             // nothing below them.

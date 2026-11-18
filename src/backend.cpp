@@ -538,7 +538,14 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         if (kind == "image") {
             QImageReader reader(path);
             reader.setAutoTransform(true);
-            const QSize size = reader.size();
+            // A decoder that throws (LibRaw, #164) leaves the size unknown,
+            // rather than throwing again where the result is read, on the
+            // window's thread.
+            QSize size;
+            try {
+                size = reader.size();
+            } catch (...) {
+            }
             // Numbers, not text: the pane writes them in the language's
             // digits, and again when the language changes.
             if (size.isValid()) {

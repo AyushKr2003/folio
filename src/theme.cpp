@@ -10,6 +10,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <cmath>
+#include <utility>
 
 namespace {
 
@@ -68,7 +69,7 @@ Palette readPalette(const QString &path) {
 
 } // namespace
 
-Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
+Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl, const QString &events)
     : QObject(parent),
       m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory) {
     m_debounce.setSingleShot(true);
@@ -86,9 +87,20 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     m_roundingTimeout.setSingleShot(true);
     m_roundingTimeout.setInterval(500);
     connect(&m_roundingTimeout, &QTimer::timeout, &m_roundingProcess, &QProcess::kill);
-    connect(&m_roundingProcess, &QProcess::errorOccurred, this, [this] { m_roundingTimeout.stop(); });
+    connect(&m_roundingProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        m_roundingTimeout.stop();
+        // No finished() follows a start that failed, and another try would
+        // fail the same way.
+        if (error == QProcess::FailedToStart)
+            m_roundingAgain = false;
+    });
     connect(&m_roundingProcess, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
         m_roundingTimeout.stop();
+        // Asked again meanwhile: what this read says may already be old.
+        if (std::exchange(m_roundingAgain, false)) {
+            refreshRounding();
+            return;
+        }
         const auto value = QJsonDocument::fromJson(m_roundingProcess.readAllStandardOutput()).object().value("int");
         if (code != 0 || status != QProcess::NormalExit || !value.isDouble() || value.toInt(-1) < 0)
             return;
@@ -97,25 +109,35 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
             emit changed();
         }
     });
-    m_roundingPoll.setInterval(1000);
-    connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
     if (!m_hyprctl.isEmpty()) {
-        m_roundingPoll.start();
-        // The rounding only needs following while Folio is in use, and it's
-        // read again the moment Folio is back.
-        connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
-            if (state == Qt::ApplicationActive) {
+        // Read again when Hyprland has read its config again, which is how a
+        // theme switch or an edit reaches the rounding, rather than asking
+        // every second. A change made live (hyprctl eval) says nothing, so
+        // it's read again when Folio is back too.
+        const QString socket = !events.isEmpty() || !hyprctl.isEmpty()
+                                   ? events
+                                   : qEnvironmentVariable("XDG_RUNTIME_DIR") + "/hypr/"
+                                         + qEnvironmentVariable("HYPRLAND_INSTANCE_SIGNATURE") + "/.socket2.sock";
+        connect(&m_events, &QLocalSocket::readyRead, this, [this] {
+            bool reloaded = false;
+            while (m_events.canReadLine())
+                reloaded |= m_events.readLine().startsWith("configreloaded>>");
+            if (reloaded)
                 refreshRounding();
-                m_roundingPoll.start();
-            } else {
-                m_roundingPoll.stop();
-            }
+        });
+        m_events.connectToServer(socket, QIODevice::ReadOnly);
+        connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive)
+                refreshRounding();
         });
     }
     reload();
 }
 
 Theme::~Theme() {
+    // Ending a read here must not start another, nor reach members
+    // already gone.
+    disconnect(&m_roundingProcess, nullptr, this, nullptr);
     if (m_roundingProcess.state() != QProcess::NotRunning) {
         m_roundingProcess.kill();
         m_roundingProcess.waitForFinished(1000);
@@ -123,8 +145,12 @@ Theme::~Theme() {
 }
 
 void Theme::refreshRounding() {
-    if (m_hyprctl.isEmpty() || m_roundingProcess.state() != QProcess::NotRunning)
+    if (m_hyprctl.isEmpty())
         return;
+    if (m_roundingProcess.state() != QProcess::NotRunning) {
+        m_roundingAgain = true;
+        return;
+    }
     m_roundingProcess.start(m_hyprctl, {"-j", "getoption", "decoration:rounding"});
     m_roundingTimeout.start();
 }
