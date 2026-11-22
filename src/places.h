@@ -117,6 +117,9 @@ private:
     QStringList m_hidden;
     QTimer m_poll;
     QFutureWatcher<QList<Mount>> m_mounts;
+    // The last reading finished, and the Devices list from it and GIO.
+    QList<Mount> m_lastMounts;
+    void publishDevices();
     // Another refresh was asked for while one was reading.
     bool m_rereadMounts = false;
     // The device the system runs from, read once: it doesn't change.

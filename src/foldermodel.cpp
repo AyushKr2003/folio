@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -384,8 +385,20 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
-                                                int limit, const QLocale &locale, const QStringList &filter) {
+                                                int limit, const QLocale &locale, const QStringList &filter,
+                                                const std::function<void(const QVector<Entry> &)> &found) {
     QVector<Entry> entries;
+    // What's been found since `found` was last told.
+    qsizetype told = 0;
+    QElapsedTimer since;
+    since.start();
+    const auto tell = [&](bool all) {
+        if (found && entries.size() > told && (all || since.elapsed() >= 100)) {
+            found(entries.mid(told));
+            told = entries.size();
+            since.restart();
+        }
+    };
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
         return entries;
@@ -411,6 +424,9 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 if (fits(filter, e))
                     entries.push_back(e);
             }
+            // At every entry, not just at matches: a match found early isn't
+            // held back by a long stretch of folders with none.
+            tell(false);
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
             struct stat st;
@@ -420,6 +436,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 folders << info.absoluteFilePath();
         }
     }
+    tell(true);
     sortEntries(entries, sort, locale);
     return entries;
 }
@@ -431,10 +448,14 @@ QStringList FolderModel::sortModes() {
 }
 
 void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
-    QCollator collator(locale);
-    collator.setNumericMode(true);
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::stable_sort(entries.begin(), entries.end(), [&](const Entry &a, const Entry &b) {
+    std::stable_sort(entries.begin(), entries.end(), before(sort, locale));
+}
+
+std::function<bool(const FolderModel::Entry &, const FolderModel::Entry &)> FolderModel::before(const QString &sort, const QLocale &locale) {
+    auto collator = std::make_shared<QCollator>(locale);
+    collator->setNumericMode(true);
+    collator->setCaseSensitivity(Qt::CaseInsensitive);
+    return [collator, sort](const Entry &a, const Entry &b) {
         // Folders first in every order, as everywhere else on the desktop.
         if (a.isDir != b.isDir)
             return a.isDir;
@@ -449,10 +470,10 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, cons
             if (a.kind != b.kind)
                 return a.kind < b.kind;
             if (a.extension != b.extension)
-                return collator.compare(a.extension, b.extension) < 0;
+                return collator->compare(a.extension, b.extension) < 0;
         }
-        return collator.compare(a.name, b.name) < 0;
-    });
+        return collator->compare(a.name, b.name) < 0;
+    };
 }
 
 // Recents are GTK's recently used files (~/.local/share/recently-used.xbel),
@@ -560,6 +581,12 @@ void FolderModel::reload() {
     const QStringList filter = m_filter;
     const QStringList expanded = expandable() ? QStringList(m_expanded.begin(), m_expanded.end()) : QStringList();
     *m_latest = generation;
+    // A search of a folder shows its matches as they're found.
+    if (!query.isEmpty() && path != recentPath() && !isPluginView(path) && !isTrash(path)) {
+        searchHere(generation);
+        return;
+    }
+    m_shownQuery.clear();
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<std::tuple<QVector<Entry>, QString, QStringList, QHash<QString, QVector<Entry>>, QHash<QString, QString>>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
@@ -772,6 +799,73 @@ int FolderModel::indexOf(const QString &name) const {
         if (m_entries[row].depth == 0 && m_entries[row].name == name)
             return row;
     return -1;
+}
+
+void FolderModel::searchHere(quint64 generation) {
+    const QString path = m_path, query = m_query, sort = m_sort;
+    const bool showHidden = m_showHidden;
+    const QStringList filter = m_filter;
+    const QLocale locale;
+    const auto latest = m_latest;
+    // A new search starts empty and fills in as matches are found. The same
+    // one again (the folder changed under it) leaves its matches up, and
+    // replaces them only if they've changed once it's done.
+    const bool fresh = query != m_shownQuery;
+    m_shownQuery = query;
+    m_staleClear.stop();
+    if (fresh)
+        clearEntries();
+    setError({});
+    auto *watcher = new QFutureWatcher<QVector<Entry>>(this);
+    // Told once, at its first matches, so the cursor goes to the first.
+    auto announced = std::make_shared<bool>(false);
+    connect(watcher, &QFutureWatcherBase::resultsReadyAt, this, [this, watcher, generation, fresh, announced](int from, int to) {
+        if (generation != m_generation || !fresh)
+            return;
+        for (int i = from; i < to; ++i)
+            insertFound(watcher->resultAt(i));
+        if (!*announced && !m_entries.isEmpty()) {
+            *announced = true;
+            emit loaded();
+        }
+    });
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, fresh, announced] {
+        watcher->deleteLater();
+        if (generation != m_generation)
+            return;
+        if (!fresh) {
+            QVector<Entry> all;
+            for (const QVector<Entry> &found : watcher->future().results())
+                all += found;
+            sortEntries(all, m_sort);
+            if (!sameListing(m_entries, all))
+                setEntries(all);
+            // What was selected and is no longer found isn't selected.
+            QSet<QString> still;
+            for (const Entry &e : std::as_const(m_entries))
+                if (m_selected.contains(e.path))
+                    still.insert(e.path);
+            setSelected(still);
+        }
+        setLoading(false);
+        emit loaded();
+        countFolders(generation);
+    });
+    watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [path, query, showHidden, sort, filter, locale, latest, generation](QPromise<QVector<Entry>> &promise) {
+        search(path, query, showHidden, sort, [&] { return *latest != generation; }, 1000, locale, filter,
+               [&](const QVector<Entry> &found) { promise.addResult(found); });
+    }));
+}
+
+void FolderModel::insertFound(const QVector<Entry> &found) {
+    const auto order = before(m_sort);
+    for (const Entry &e : found) {
+        const int row = int(std::upper_bound(m_entries.begin(), m_entries.end(), e, order) - m_entries.begin());
+        beginInsertRows({}, row, row);
+        m_entries.insert(row, e);
+        endInsertRows();
+    }
+    emit countChanged();
 }
 
 bool FolderModel::expandable() const {

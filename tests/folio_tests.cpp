@@ -20,8 +20,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QProcess>
 #include <QQmlComponent>
+#include <QThread>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -996,6 +999,78 @@ private slots:
         QVERIFY(model.query().isEmpty());
     }
 
+    // A search tells what it finds as it goes, rather than all at the end:
+    // a big tree could keep the window showing nothing for a long while.
+    void folderSearchShowsMatchesAsTheyreFound()
+    {
+        QTemporaryDir dir;
+        for (int i = 0; i < 40; ++i) {
+            const QString folder = QString("d%1").arg(i, 2, 10, QLatin1Char('0'));
+            QDir(dir.path()).mkpath(folder);
+            write(dir.filePath(folder + "/match-" + folder + ".txt"), "x");
+            write(dir.filePath(folder + "/other.txt"), "x");
+        }
+        // A slow walk (each look at the stop check takes a while), so the
+        // matches come in several batches before it's done.
+        QStringList told;
+        int batches = 0;
+        const auto found = FolderModel::search(dir.path(), "match", false, "name",
+            [] { QThread::usleep(2000); return false; }, 1000, QLocale(), {},
+            [&](const QVector<FolderModel::Entry> &batch) {
+                ++batches;
+                for (const auto &e : batch)
+                    told << e.name;
+            });
+        QVERIFY2(batches > 1, qPrintable(QString::number(batches)));
+        QStringList all;
+        for (const auto &e : found)
+            all << e.name;
+        QCOMPARE(all.size(), 40);
+        told.sort();
+        QCOMPARE(told, all);
+
+        // The model shows a new search from empty, at once, not the folder it
+        // searches; and ends with its matches in the folder's order.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 40);
+        model.setQuery("match");
+        QCOMPARE(model.count(), 0);
+        QVERIFY(model.loading());
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 40);
+        for (int row = 0; row < 40; ++row)
+            QCOMPARE(model.get(row).value("name").toString(), all.at(row));
+        // The same search again (the folder changed) keeps its matches up,
+        // and what was selected and is gone is no longer selected.
+        model.selectRows({0, 1});
+        QVERIFY(QFile::remove(dir.filePath("d00/match-d00.txt")));
+        model.reload();
+        QCOMPARE(model.count(), 40);
+        QTRY_VERIFY(!model.loading());
+        QCOMPARE(model.count(), 39);
+        QCOMPARE(model.selectedCount(), 1);
+        QCOMPARE(model.selectedPaths(), QStringList({dir.filePath("d01/match-d01.txt")}));
+
+        // A match found early is told before the walk ends, though nothing
+        // else matches after it.
+        QTemporaryDir quiet;
+        write(quiet.filePath("early-match.txt"), "x");
+        for (int i = 0; i < 30; ++i) {
+            QDir(quiet.path()).mkpath(QString("f%1").arg(i));
+            for (int j = 0; j < 5; ++j)
+                write(quiet.filePath(QString("f%1/file-%2.txt").arg(i).arg(j)), "x");
+        }
+        int looks = 0, lookedWhenTold = -1;
+        FolderModel::search(quiet.path(), "match", false, "name",
+            [&] { ++looks; QThread::usleep(2000); return false; }, 1000, QLocale(), {},
+            [&](const QVector<FolderModel::Entry> &) { if (lookedWhenTold < 0) lookedWhenTold = looks; });
+        QVERIFY2(lookedWhenTold > 0 && lookedWhenTold < looks / 2,
+                 qPrintable(QString("told at %1 of %2").arg(lookedWhenTold).arg(looks)));
+    }
+
     void folderSearchSkipsSymlinkedFolders()
     {
         // A link back up the tree would otherwise be walked round and round.
@@ -1208,6 +1283,61 @@ private slots:
         model.setPath(b.path());
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
+    }
+
+    void fileOpsKnowsTheEditorOmarchyOpens()
+    {
+        // The editor picked under Setup > Default > Editor, read the way
+        // omarchy-launch-editor reads it: Neovim when none was picked, or
+        // when the picked one isn't installed.
+        QTemporaryDir home, bin;
+        const QByteArray oldHome = qgetenv("HOME"), oldPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] {
+            qputenv("HOME", oldHome);
+            qputenv("PATH", oldPath);
+        });
+        qputenv("HOME", QFile::encodeName(home.path()));
+        qputenv("PATH", QFile::encodeName(bin.path()));
+        for (const char *name : {"code", "subl"}) {
+            write(bin.filePath(name), "#!/bin/sh\n");
+            QVERIFY(QFile::setPermissions(bin.filePath(name), QFile::ReadOwner | QFile::ExeOwner));
+        }
+        QCOMPARE(FileOps::omarchyEditor(), QString("nvim"));
+        const QString setting = home.filePath(".local/state/omarchy/defaults/editor");
+        QVERIFY(QDir().mkpath(QFileInfo(setting).path()));
+        write(setting, "code\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("code"));
+        write(setting, "sublime_text\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("subl"));
+        write(setting, "zeditor\n");
+        QCOMPARE(FileOps::omarchyEditor(), QString("nvim"));
+
+        // The handler is named after the app that runs the picked editor,
+        // by its executable's name wherever it lives; with none, nothing,
+        // and it keeps its own name.
+        const QVariantList apps{QVariantMap{{"executable", "/usr/bin/code"}, {"name", "Visual Studio Code"}},
+                                QVariantMap{{"executable", "nvim"}, {"name", "Neovim"}}};
+        write(setting, "code\n");
+        QCOMPARE(FileOps::editorAppName(apps), QString("Visual Studio Code"));
+        write(setting, "zeditor\n");
+        QCOMPARE(FileOps::editorAppName(apps), QString("Neovim"));
+        write(setting, "subl\n");
+        QCOMPARE(FileOps::editorAppName({apps.first()}), QString());
+    }
+
+    void fileOpsListsTheEditorHandlerOnce()
+    {
+        // Named after Neovim, the handler and Neovim's own entry would be two
+        // of one name: the handler, the default that follows the picked
+        // editor, stands for both. Apps that share a name otherwise stay.
+        const QVariantMap handler{{"id", "omarchy-launch-editor.desktop"}, {"name", "Neovim"}, {"isDefault", true}};
+        const QVariantMap writer{{"id", "libreoffice-writer.desktop"}, {"name", "LibreOffice Writer"}, {"isDefault", false}};
+        const QVariantMap neovim{{"id", "nvim.desktop"}, {"name", "Neovim"}, {"isDefault", false}};
+        QCOMPARE(FileOps::foldHandlerRepeats({handler, writer, neovim}), QVariantList({handler, writer}));
+        QVariantMap other = neovim;
+        other["isDefault"] = true;
+        const QVariantMap twin{{"id", "nvim-qt.desktop"}, {"name", "Neovim"}, {"isDefault", false}};
+        QCOMPARE(FileOps::foldHandlerRepeats({other, writer, twin}), QVariantList({other, writer, twin}));
     }
 
     void fileOpsDeleteForeverOutsideTheTrash()
@@ -2423,6 +2553,67 @@ private slots:
             QVERIFY2(error.isEmpty(), qPrintable(error));
             QVERIFY(!QFileInfo::exists(to.filePath(name)));
         }
+    }
+
+    void fileOpsCopyWaitsOutAPipesPause()
+    {
+        // A writer that goes quiet for longer than the copy's 100 ms looks for Stop is waited for, and what it sends after still arrives.
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("pipe"), to.filePath("pipe"), &error, false, &job); });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            job.cancelled = true;
+            if (writer >= 0)
+                close(writer);
+            copied.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "first ", 6), 6);
+        QTRY_COMPARE(job.bytes.load(), 6);
+        QTest::qWait(300);
+        QVERIFY(!copied.isFinished());
+        QCOMPARE(::write(writer, "second", 6), 6);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(copied.isFinished());
+        QVERIFY(copied.result());
+        QCOMPARE(contents(to.filePath("pipe")), QByteArray("first second"));
+    }
+
+    void fileOpsCopyWaitsOutALease()
+    {
+        // A file another program holds a lease on is copied whole once the lease is given up.
+        QTemporaryDir from, to;
+        write(from.filePath("leased"), "kept");
+        const int holder = open(QFile::encodeName(from.filePath("leased")).constData(), O_RDWR);
+        QVERIFY(holder >= 0);
+        // Breaking a lease tells its holder with SIGIO, which would end the test.
+        const auto io = signal(SIGIO, SIG_IGN);
+        const auto restored = qScopeGuard([&] {
+            close(holder);
+            signal(SIGIO, io);
+        });
+        if (fcntl(holder, F_SETLEASE, F_WRLCK) != 0)
+            QSKIP("This filesystem gives no leases.");
+        FileOps::Job job;
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("leased"), to.filePath("leased"), &error, false, &job); });
+        const auto finish = qScopeGuard([&] {
+            job.cancelled = true;
+            fcntl(holder, F_SETLEASE, F_UNLCK);
+            copied.waitForFinished();
+        });
+        // The copy's open has asked for the lease to be given up.
+        QTRY_COMPARE(fcntl(holder, F_GETLEASE), F_RDLCK);
+        QCOMPARE(fcntl(holder, F_SETLEASE, F_UNLCK), 0);
+        QTRY_VERIFY(copied.isFinished());
+        QVERIFY(copied.result());
+        QCOMPARE(contents(to.filePath("leased")), QByteArray("kept"));
     }
 
     void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
@@ -6112,6 +6303,18 @@ private slots:
         QVERIFY(!devices.at(4).toMap().contains("volume"));
     }
 
+    void drivesReadWhatUdevFoundOnADevice()
+    {
+        // The system's own disk holds a filesystem (an encrypted one's
+        // cleartext device does too); a device that isn't there, nothing.
+        const QString device = QFileInfo(QString::fromUtf8(QStorageInfo::root().device())).canonicalFilePath();
+        const QString name = QFileInfo(device).fileName();
+        if (!device.startsWith("/dev/") || !QFileInfo::exists("/run/udev/data"))
+            QSKIP("No udev, or the system doesn't run from a block device");
+        QCOMPARE(Drives::usageOf(name), QString("filesystem"));
+        QCOMPARE(Drives::usageOf("no-such-device"), QString());
+    }
+
     void drivesSayWhatsFreeInTheLanguagesDigits()
     {
         QQmlEngine engine;
@@ -6285,6 +6488,62 @@ private slots:
         // the one it names.
         write(dir.filePath("photo.heic"), "not a real heic");
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+
+        // What failed is remembered with the round it failed in, and one
+        // remembered from before a fix (files on other machines) is tried
+        // again.
+        write(dir.filePath("broken.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %o\nMimeType=image/x-broken;\n");
+        Thumbnails withBroken(dir.filePath("cache"), {dir.path()});
+        write(dir.filePath("never.broken"), "x");
+        QVERIFY(withBroken.load(dir.filePath("never.broken"), "image/x-broken", 128).isNull());
+        const QImage marker(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("never.broken"))));
+        QCOMPARE(marker.text("X-Folio::Round"), QString("2"));
+        // An old marker, without its round, for a picture that can be made.
+        const QFileInfo picture(dir.filePath("frame.png"));
+        QImage old(1, 1, QImage::Format_ARGB32);
+        old.setText("Thumb::MTime", QString::number(picture.lastModified().toSecsSinceEpoch()));
+        old.setText("X-Folio::MTime", QString::number(picture.lastModified().toMSecsSinceEpoch()));
+        QVERIFY(old.save(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(picture.filePath()))));
+        QVERIFY(!withBroken.load(picture.filePath(), "image/png", 128).isNull());
+    }
+
+    // A file on another machine goes to a thumbnailer given a URI by a link
+    // to it, a file:// one with its extension: GIO would turn the mount's
+    // own path back into sftp://, which most thumbnailers can't open. The
+    // thumbnail is still kept under the file's own path.
+    void thumbnailsReachOtherMachinesByALink()
+    {
+        QTemporaryDir dir;
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        // Says what it was given, and makes the frame its thumbnail.
+        write(dir.filePath("record"), "#!/bin/sh\necho \"$1\" > \"" + dir.filePath("given").toUtf8()
+              + "\"\ncp \"" + dir.filePath("frame.png").toUtf8() + "\" \"$2\"\n");
+        QVERIFY(QFile::setPermissions(dir.filePath("record"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(dir.filePath("record.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=" + dir.filePath("record").toUtf8() + " %u %o\nMimeType=application/pdf;\n");
+        QDir(dir.path()).mkpath("gvfs/sftp:host=far/home");
+        const QString remote = dir.filePath("gvfs/sftp:host=far/home/Order 42.pdf");
+        write(remote, "%PDF");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, dir.filePath("gvfs"));
+
+        QVERIFY(!thumbnails.load(remote, "application/pdf", 128).isNull());
+        QFile given(dir.filePath("given"));
+        QVERIFY(given.open(QIODevice::ReadOnly));
+        const QUrl url(QString::fromUtf8(given.readAll()).trimmed());
+        QCOMPARE(url.scheme(), QString("file"));
+        QVERIFY2(!url.toLocalFile().startsWith(dir.filePath("gvfs")), qPrintable(url.toString()));
+        QCOMPARE(QFileInfo(url.toLocalFile()).fileName(), QString("input.pdf"));
+        QVERIFY(QFile::exists(dir.filePath("cache/normal/" + Thumbnails::cacheKey(remote))));
+
+        // A file here goes as it is.
+        const QString local = dir.filePath("Order 43.pdf");
+        write(local, "%PDF");
+        QVERIFY(!thumbnails.load(local, "application/pdf", 128).isNull());
+        given.close();
+        QVERIFY(given.open(QIODevice::ReadOnly));
+        QCOMPARE(QUrl(QString::fromUtf8(given.readAll()).trimmed()).toLocalFile(), local);
     }
 
     void thumbnailsSetTextOnAPage()
@@ -6979,11 +7238,70 @@ private slots:
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         write(response, "{\"int\":4}");
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(dir.filePath("events.sock")));
 
-        Theme theme(dir.path(), nullptr, command);
+        Theme theme(dir.path(), nullptr, command, hyprland.fullServerName());
         QTRY_COMPARE(theme.radius(), 4);
+        QTRY_VERIFY(hyprland.hasPendingConnections());
+        QLocalSocket *events = hyprland.nextPendingConnection();
+        // A theme switch or an edit ends with Hyprland reading its config
+        // again, which it says on its event socket; other events don't count.
         write(response, "{\"int\":6}");
+        events->write("activewindow>>folio,Files\nconfigrel");
+        events->flush();
+        QTest::qWait(300);
+        QCOMPARE(theme.radius(), 4);
+        events->write("oaded>>\n");
         QTRY_COMPARE(theme.radius(), 6);
+    }
+
+    void themeReadsAgainWhenHyprlandReloadsMidRead()
+    {
+        // A reload while a read is still running may come after hyprctl
+        // answered, so the answer can be old: it's read once more.
+        QTemporaryDir dir;
+        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        write(command, "#!/bin/sh\nr=$(cat '" + response.toUtf8() + "')\nsleep 0.3\necho \"$r\"\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(response, "{\"int\":1}");
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(dir.filePath("events.sock")));
+
+        Theme theme(dir.path(), nullptr, command, hyprland.fullServerName());
+        QTRY_VERIFY(hyprland.hasPendingConnections());
+        QLocalSocket *events = hyprland.nextPendingConnection();
+        QTRY_COMPARE(theme.radius(), 1);
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
+        QTest::qWait(100);
+        write(response, "{\"int\":5}");
+        events->write("configreloaded>>\n");
+        events->flush();
+        QTRY_COMPARE(theme.radius(), 5);
+    }
+
+    void themeLeavesHyprctlAloneUntilSomethingChanges()
+    {
+        // Each read runs hyprctl, so it's run when the rounding may have
+        // changed, not on a timer for as long as Folio is open.
+        // Kept out of the theme folder, which Theme watches.
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("theme") && QDir(root.path()).mkpath("bin"));
+        const QString calls = root.filePath("bin/calls"), command = root.filePath("bin/hyprctl");
+        write(command, "#!/bin/sh\necho . >> '" + calls.toUtf8() + "'\necho '{\"int\":2}'\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        QLocalServer hyprland;
+        QVERIFY(hyprland.listen(root.filePath("bin/events.sock")));
+
+        Theme theme(root.filePath("theme"), nullptr, command, hyprland.fullServerName());
+        QTRY_COMPARE(theme.radius(), 2);
+        const auto count = [&] {
+            QFile file(calls);
+            return file.open(QIODevice::ReadOnly) ? file.readAll().count('\n') : 0;
+        };
+        const qsizetype first = count();
+        QTest::qWait(1500);
+        QCOMPARE(count(), first);
     }
 
     void themeAsksForRoundingOnlyWhileActive()
@@ -7002,8 +7320,8 @@ private slots:
 
         Theme theme(themeDir, nullptr, command);
         QTRY_COMPARE(theme.radius(), 3);
-        // Away from Folio, a change goes unnoticed for longer than the poll,
-        // and it's picked up once Folio is back.
+        // Away from Folio, with no reload, a change goes unnoticed, and it's
+        // picked up once Folio is back.
         emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
         // A read already under way may still finish (it's killed within
         // 500ms), so the change comes after it.

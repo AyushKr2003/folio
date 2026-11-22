@@ -208,8 +208,9 @@ Item {
                 Text {
                     x: LayoutMirroring.enabled ? here.width - width - 46 : 46
                     y: 8
-                    visible: here.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-                    text: backend.folder.query ? qsTr("No matches") : qsTr("No items")
+                    readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0
+                    visible: here.count === 0 && (!backend.folder.loading || searching) && backend.folder.error.length === 0
+                    text: searching ? qsTr("Searching…") : backend.folder.query ? qsTr("No matches") : qsTr("No items")
                     color: theme.secondaryForeground
                 }
             }

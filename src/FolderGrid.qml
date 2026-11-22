@@ -106,8 +106,11 @@ GridView {
 
     Text {
         anchors.centerIn: parent
-        visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-        text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
+        // A search says it's looking until it finds something, or is done.
+        readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0
+        visible: grid.count === 0 && (!backend.folder.loading || searching) && backend.folder.error.length === 0
+        text: searching ? qsTr("Searching…")
+            : backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
         color: theme.secondaryForeground
     }

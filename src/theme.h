@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QLocalSocket>
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
@@ -30,7 +31,10 @@ class Theme : public QObject {
     Q_PROPERTY(int radius READ radius NOTIFY changed)
 
 public:
-    explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {});
+    // `events` is Hyprland's event socket; with neither it nor `hyprctl`
+    // given, the running Hyprland's.
+    explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {},
+                   const QString &events = {});
     ~Theme() override;
 
     QColor accent() const { return color("accent"); }
@@ -66,5 +70,7 @@ private:
     QString m_hyprctl;
     int m_radius = 0;
     QProcess m_roundingProcess;
-    QTimer m_roundingPoll, m_roundingTimeout;
+    QTimer m_roundingTimeout;
+    bool m_roundingAgain = false;
+    QLocalSocket m_events;
 };

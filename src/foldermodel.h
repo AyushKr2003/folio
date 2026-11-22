@@ -157,6 +157,8 @@ public:
     static int itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop = {});
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
+    // The order sortEntries() sorts by: whether `a` comes before `b`.
+    static std::function<bool(const Entry &, const Entry &)> before(const QString &sort, const QLocale &locale = QLocale());
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
@@ -184,9 +186,12 @@ public:
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
+    // `found`, when given, gets the matches as they're found, a batch at a
+    // time (every tenth of a second at most), in no order.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
                                  const std::function<bool()> &stop = {}, int limit = 1000,
-                                 const QLocale &locale = QLocale(), const QStringList &filter = {});
+                                 const QLocale &locale = QLocale(), const QStringList &filter = {},
+                                 const std::function<void(const QVector<Entry> &)> &found = {});
 
 signals:
     void pathChanged();
@@ -207,6 +212,12 @@ signals:
 
 private:
     void setLoading(bool loading);
+    // A search of the folder and below, its matches shown as they're found.
+    void searchHere(quint64 generation);
+    // Matches just found, each put in its place in the folder's order.
+    void insertFound(const QVector<Entry> &found);
+    // The search whose matches are shown (or being found).
+    QString m_shownQuery;
     void setEntries(const QVector<Entry> &entries);
     void clearEntries();
     QString cacheKey() const;

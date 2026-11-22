@@ -45,6 +45,11 @@ public:
     // GNOME's "mount drives as they're plugged in" setting, on where it
     // isn't installed.
     static bool automountWanted();
+    // What udev found on the block device `name` (sda1, dm-0): its
+    // ID_FS_USAGE, "filesystem" or "crypto" (LUKS), say; empty if nothing.
+    static QString usageOf(const QString &name);
+    // Whether it's an encrypted volume, by what udev found on it.
+    static bool encrypted(GVolume *volume);
     // How long a plugged drive is left for another automounter first.
     static constexpr int automountDelayMs = 2000;
 

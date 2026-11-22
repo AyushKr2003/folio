@@ -9,7 +9,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Concurrent Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControls2 DBus Concurrent Test)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 find_package(ZLIB REQUIRED)
@@ -21,7 +21,7 @@ list(REMOVE_ITEM folio_sources ${CMAKE_SOURCE_DIR}/src/main.cpp)
 add_library(folio_core STATIC ${folio_sources})
 target_include_directories(folio_core PUBLIC src)
 target_link_libraries(folio_core PUBLIC
-  Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Concurrent
+  Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus Qt6::Concurrent
   PkgConfig::GIO ZLIB::ZLIB)
 target_compile_options(folio_core PUBLIC -Wall -Wextra)
 
