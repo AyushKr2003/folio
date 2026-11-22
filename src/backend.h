@@ -9,6 +9,7 @@
 #include "foldermodel.h"
 #include "mounter.h"
 #include "plugins.h"
+#include "previewer.h"
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
@@ -29,9 +30,9 @@ class Backend : public QObject {
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details column shows beyond the listing, for the item last
     // given to describe(), once they've been read in the background: a
-    // picture's dimensions, a text's opening lines, or a trashed item's
-    // origin and deletion time; and under `plugins`, plugins' rows about a
-    // file or folder, [[label, value]...].
+    // picture's dimensions, a text's opening lines, an archive's names, or
+    // a trashed item's origin and deletion time; and under `plugins`,
+    // plugins' rows about a file or folder, [[label, value]...].
     // Changes whenever an order is chosen, for what shows other folders
     // than the one shown (the columns) to look their orders up again.
     Q_PROPERTY(int sortsRevision READ sortsRevision NOTIFY sortsChanged)
@@ -103,6 +104,8 @@ public:
     // The system's own name for a type ("JPEG image"), in the language of
     // the moment.
     Q_INVOKABLE static QString typeName(const QString &mime);
+    // Whether the details list an archive of this type's names.
+    Q_INVOKABLE static bool listsArchive(const QString &mime) { return Previewer::listsArchive(mime); }
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
@@ -119,6 +122,9 @@ public:
     // Space: opens the large preview of a file in its own process, or closes
     // it when it's already open.
     Q_INVOKABLE void togglePreview(const QString &path);
+    // A line from the preview: the file it moved to, or "step -1"/"step 1"
+    // asking for the row above or below.
+    void previewSaid(const QString &line);
     // Ctrl+N: another window, on the folder this one shows.
     Q_INVOKABLE void newWindow();
     // In a file chooser, opening a file picks it (chosen) rather than opening
@@ -141,9 +147,11 @@ public:
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
-    // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
-    // mounts it, or empty when the text isn't one.
-    static QString serverAddress(const QString &text);
+    // A server address (sftp://, smb://, nfs://, ftp://, ftps://, dav://,
+    // davs://, or \\server\share) as GIO mounts it, or empty when the text
+    // isn't one. `problem` says why when it's an address that can't be
+    // mounted as written.
+    static QString serverAddress(const QString &text, QString *problem = nullptr);
 
 signals:
     void sortsChanged();
@@ -157,6 +165,12 @@ signals:
     void newWindowRequested(const QString &path);
     void chosen(const QString &path);
     void selectRequested(const QString &name);
+    // The preview moved to `path`, in the folder shown or a folder opened in
+    // place in it: the cursor goes to its row.
+    void selectPathRequested(const QString &path);
+    // The preview's ↑ or ↓ on a file it can't scroll: move one row in the
+    // folder view, whose layout only this window knows.
+    void stepRequested(int direction);
     void activateRequested();
 
 private:

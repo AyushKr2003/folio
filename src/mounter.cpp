@@ -63,19 +63,25 @@ struct MounterCallbacks {
             return;
         }
         self->m_prompt = QString::fromUtf8(message).trimmed();
+        self->m_choices.clear();
         for (const char **choice = choices; choice && *choice; ++choice)
             self->m_choices << QString::fromUtf8(*choice);
         self->setAsking(true);
     }
 
-    static void password(GMountOperation *op, const char *message, const char *user, const char *,
-                         GAskPasswordFlags, gpointer data) {
+    static void password(GMountOperation *op, const char *message, const char *user, const char *domain,
+                         GAskPasswordFlags flags, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-password");
         auto *self = static_cast<Mounter *>(data);
         // Asked again (a wrong passphrase): the last reply's clock stops.
         ++self->m_attempt;
         self->m_prompt = QString::fromUtf8(message).trimmed();
         self->m_user = QString::fromUtf8(user ? user : "");
+        self->m_needsDomain = (flags & G_ASK_PASSWORD_NEED_DOMAIN) != 0;
+        self->m_domain = QString::fromUtf8(domain ? domain : "");
+        self->m_guestAllowed = (flags & G_ASK_PASSWORD_ANONYMOUS_SUPPORTED) != 0;
+        self->m_canRemember = (flags & G_ASK_PASSWORD_SAVING_SUPPORTED) != 0;
+        self->m_choices.clear();
         self->setAsking(true);
     }
 
@@ -264,15 +270,26 @@ void Mounter::mountVolume(const QString &id) {
     g_object_unref(volume);
 }
 
-void Mounter::providePassword(const QString &user, const QString &password) {
+void Mounter::providePassword(const QString &user, const QString &password,
+                              const QString &domain, bool remember) {
     if (!m_operation || !m_asking)
         return;
+    const bool savePermanently = remember && m_canRemember;
+    // GVfs asks again on the same operation after a failed login, so a
+    // domain cleared since then is set empty rather than left as it was.
+    const bool setDomain = m_needsDomain;
     setAsking(false);
+    g_mount_operation_set_anonymous(m_operation, FALSE);
     if (!user.isEmpty())
         g_mount_operation_set_username(m_operation, user.toUtf8().constData());
+    if (setDomain)
+        g_mount_operation_set_domain(m_operation, domain.toUtf8().constData());
     g_mount_operation_set_password(m_operation, password.toUtf8().constData());
     // A drive's passphrase isn't kept at all: once unlocked it stays so.
-    g_mount_operation_set_password_save(m_operation, m_drive ? G_PASSWORD_SAVE_NEVER : G_PASSWORD_SAVE_FOR_SESSION);
+    g_mount_operation_set_password_save(m_operation,
+                                        m_drive           ? G_PASSWORD_SAVE_NEVER
+                                        : savePermanently ? G_PASSWORD_SAVE_PERMANENTLY
+                                                          : G_PASSWORD_SAVE_FOR_SESSION);
     g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
     // An encrypted drive that unlocks but holds nothing udisks can mount
     // (no filesystem, or LVM inside) leaves GVfs's mount pending for good;
@@ -289,6 +306,14 @@ void Mounter::providePassword(const QString &user, const QString &password) {
             g_cancellable_cancel(m_cancellable);
         });
     }
+}
+
+void Mounter::connectAsGuest() {
+    if (!m_operation || !m_asking || !m_guestAllowed)
+        return;
+    setAsking(false);
+    g_mount_operation_set_anonymous(m_operation, TRUE);
+    g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
 }
 
 void Mounter::choose(int choice) {
@@ -310,6 +335,10 @@ void Mounter::setAsking(bool asking) {
     m_asking = asking;
     if (!asking) {
         m_prompt.clear();
+        m_needsDomain = false;
+        m_domain.clear();
+        m_guestAllowed = false;
+        m_canRemember = false;
         m_choices.clear();
     }
     emit askingChanged();

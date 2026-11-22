@@ -47,14 +47,36 @@ ApplicationWindow {
             win.view[name](arg)
     }
 
+    // Opened in its app, the file needs no preview: the window closes, as Quick Look's does.
+    Connections {
+        target: previewer
+        function onOpened() { Qt.quit() }
+    }
+
     Shortcut { sequences: ["Space", "Escape", "Q"]; context: Qt.ApplicationShortcut; onActivated: win.helpVisible ? win.helpVisible = false : Qt.quit() }
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     // The folder's files run right to left when mirrored, so Left is next.
     Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.next() : previewer.previous() }
     Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.previous() : previewer.next() }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: previewer.open() }
-    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", -1) }
-    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", 1) }
+    // ↑ and ↓ scroll what's taller than the window (a long text, a zoomed
+    // picture, a PDF); anything that fits moves to the item above or below,
+    // as the arrows do in the folder.
+    function upDown(direction) {
+        // A text still being read looks short; stepping past it then would
+        // skip a long one. The next press, once it's in, knows which.
+        if (previewer.readingText)
+            return
+        const v = win.view
+        const scrolls = v && typeof v.scroll === "function"
+            && (v.scrolls !== undefined ? v.scrolls : v.contentHeight > v.height + 1)
+        if (scrolls)
+            v.scroll(direction)
+        else
+            previewer.stepRow(direction)
+    }
+    Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.upDown(-1) }
+    Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.upDown(1) }
     Shortcut { sequences: [StandardKey.MoveToPreviousPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", -1) }
     Shortcut { sequences: [StandardKey.MoveToNextPage]; context: Qt.ApplicationShortcut; onActivated: win.call("page", 1) }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; context: Qt.ApplicationShortcut; onActivated: win.call("zoomBy", 1.25) }
@@ -88,31 +110,32 @@ ApplicationWindow {
                         spacing: 2
                         // Aligned explicitly, so that they're mirrored: left
                         // as they are, a Latin name would stay on the left.
-                        Text {
+                        FolioText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
+                            textFormat: Text.PlainText
                             color: theme.brightForeground
-                            font.pixelSize: 15
+                            size: 15
                             font.weight: Font.DemiBold
                             elide: Text.ElideMiddle
                         }
-                        Text {
+                        FolioText {
                             Layout.fillWidth: true
                             horizontalAlignment: Text.AlignLeft
                             text: Format.summary(win.item, previewer.type)
                             color: theme.secondaryForeground
-                            font.pixelSize: 12
+                            size: 12
                             elide: Text.ElideRight
                         }
                     }
 
-                    Text {
+                    FolioText {
                         visible: previewer.count > 1
                         text: qsTr("%1 of %2").arg((previewer.index + 1).toLocaleString(Qt.locale(), "f", 0))
                                               .arg(previewer.count.toLocaleString(Qt.locale(), "f", 0))
                         color: theme.secondaryForeground
-                        font.pixelSize: 12
+                        size: 12
                     }
                     // Mirrored, Next sits left of Previous; each points away
                     // from the other, at the key that does the same.
@@ -143,7 +166,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     active: !win.external
                     sourceComponent: win.viewer === "image" || win.viewer === "animated" ? imageView
-                                   : win.viewer === "text" || win.viewer === "markdown" ? textView
+                                   : win.viewer === "text" || win.viewer === "markdown" || win.viewer === "archive" ? textView
                                    : win.viewer === "folder" ? folderView
                                    : otherView
                 }
@@ -157,7 +180,7 @@ ApplicationWindow {
                     source: win.viewer === "pdf" ? "qrc:/PdfPreview.qml" : win.external ? "qrc:/MediaPreview.qml" : ""
                 }
 
-                Text {
+                FolioText {
                     anchors.centerIn: parent
                     width: parent.width - 96
                     horizontalAlignment: Text.AlignHCenter
@@ -182,7 +205,7 @@ ApplicationWindow {
             visible: win.helpVisible
             onDismissed: win.helpVisible = false
             groups: [{ title: qsTr("Preview"), shortcuts: [
-                [qsTr("Previous / next file"), win.rtl ? [["→"], ["←"]] : [["←"], ["→"]]],
+                [qsTr("Previous / next file"), (win.rtl ? [["→"], ["←"]] : [["←"], ["→"]]).concat([["↑"], ["↓"]])],
                 [qsTr("Open in its app"), [["⏎"]]],
                 [qsTr("Scroll"), [["↑", "↓"], ["Page Up"], ["Page Down"]]],
                 [qsTr("Zoom in / out"), [["Ctrl", "="], ["Ctrl", "-"]]],
@@ -207,27 +230,83 @@ ApplicationWindow {
 
             readonly property bool animated: win.viewer === "animated"
             readonly property var source: animated ? moving : still
-            readonly property size natural: source.status === Image.Ready ? Qt.size(source.implicitWidth, source.implicitHeight) : Qt.size(1, 1)
+            readonly property bool canZoom: animated || still.status === Image.Ready
+            readonly property size natural: source.status === Image.Ready ? Qt.size(source.implicitWidth, source.implicitHeight)
+                                            : quick.visible ? Qt.size(quick.implicitWidth, quick.implicitHeight) : Qt.size(1, 1)
             readonly property real fitScale: Math.min(1, (width - 48) / natural.width, (height - 48) / natural.height)
             property real zoom: fitScale
 
             onFitScaleChanged: if (!zoomed) zoom = fitScale
             property bool zoomed: false
 
-            function zoomBy(factor) { zoomed = true; zoom = Math.max(0.05, Math.min(16, zoom * factor)) }
+            function zoomBy(factor) {
+                if (!canZoom)
+                    return
+                zoomed = true
+                zoom = Math.max(0.05, Math.min(16, zoom * factor))
+            }
             function fit() { zoomed = false; zoom = fitScale }
             function scroll(direction) { contentY = Math.max(0, Math.min(contentHeight - height, contentY + direction * 80)) }
+            function loadStill() {
+                headStart.stop()
+                still.source = ""
+                const item = previewer.item
+                quick.source = previewer.viewer === "image" && item.path && !item.mime.startsWith("image/svg")
+                               && !/@[2-9]x\.[^.]+$/.test(item.path)
+                               ? Format.cachedPreview(item.path, item.modified, win.width, win.height) : ""
+                if (quick.status === Image.Loading)
+                    headStart.start()
+                else
+                    showStill()
+            }
+            function showStill() {
+                headStart.stop()
+                if (previewer.viewer === "image")
+                    still.source = previewer.url
+            }
 
             contentWidth: Math.max(width, natural.width * zoom)
             contentHeight: Math.max(height, natural.height * zoom)
 
+            Component.onCompleted: loadStill()
             Connections {
                 target: previewer
-                function onChanged() { flick.fit() }
+                function onChanged() {
+                    flick.loadStill()
+                    flick.fit()
+                }
+            }
+
+            // Qt delivers both images on one reader thread. Give a warm thumb
+            // a chance to arrive before the full decode occupies that thread.
+            Timer {
+                id: headStart
+                interval: 50
+                onTriggered: flick.showStill()
             }
 
             Image {
+                id: quick
+                objectName: "previewThumbnail"
+                anchors.fill: still
+                asynchronous: true
+                cache: false
+                fillMode: Image.PreserveAspectFit
+                visible: !flick.animated && status === Image.Ready
+                         && still.status !== Image.Ready && still.status !== Image.Error
+                onStatusChanged: if (headStart.running && (status === Image.Ready || status === Image.Error)) flick.showStill()
+            }
+            Image {
                 id: still
+                // Share the in-flight decode across scale reloads. The hidden
+                // child uses the same window/DPR and releases its pixels at Ready.
+                property Image keeper: Image {
+                    parent: still
+                    visible: false
+                    asynchronous: true
+                    autoTransform: true
+                    source: still.status === Image.Loading ? still.source : ""
+                }
                 visible: !flick.animated
                 width: flick.natural.width * flick.zoom
                 height: flick.natural.height * flick.zoom
@@ -237,7 +316,7 @@ ApplicationWindow {
                 autoTransform: true
                 smooth: true
                 mipmap: true
-                source: flick.animated ? "" : previewer.url
+                onStatusChanged: if (status === Image.Ready || status === Image.Error) quick.source = ""
             }
             AnimatedImage {
                 id: moving
@@ -251,6 +330,7 @@ ApplicationWindow {
             }
 
             TapHandler {
+                enabled: flick.canZoom
                 onDoubleTapped: flick.zoomed && Math.abs(flick.zoom - 1) < 0.01 ? flick.fit() : (flick.zoomed = true, flick.zoom = 1)
             }
             WheelHandler {
@@ -258,7 +338,7 @@ ApplicationWindow {
                 onWheel: event => flick.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
             }
 
-            Text {
+            FolioText {
                 anchors.centerIn: parent
                 visible: flick.source.status === Image.Error
                 text: qsTr("Couldn't read this picture.")
@@ -270,7 +350,7 @@ ApplicationWindow {
         }
     }
 
-    // Text to read, Markdown rendered; selectable, never editable.
+    // Text to read, Markdown rendered, an archive's names; selectable, never editable.
     Component {
         id: textView
 
@@ -303,7 +383,8 @@ ApplicationWindow {
                 color: theme.foreground
                 selectionColor: theme.accent
                 selectedTextColor: theme.accentForeground
-                font.pixelSize: 13
+                font.family: theme.fontFamily
+                font.pixelSize: Math.round(13 * theme.textScale)
             }
 
             ScrollBar.vertical: FolioScrollBar { }
@@ -341,7 +422,7 @@ ApplicationWindow {
                 stroke: 1.1
                 color: theme.accent
             }
-            Text {
+            FolioText {
                 Layout.alignment: Qt.AlignHCenter
                 text: Format.count(win.item.itemCount)
                 color: theme.secondaryForeground
@@ -377,13 +458,14 @@ ApplicationWindow {
                     stroke: 1.1
                     color: theme.secondaryForeground
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: win.item.extension || ""
+                    textFormat: Text.PlainText
                     color: theme.accent
                     font.weight: Font.DemiBold
                 }
-                Text {
+                FolioText {
                     Layout.alignment: Qt.AlignHCenter
                     text: thumb.status === Image.Loading ? qsTr("Making a preview…") : qsTr("No preview for this type. Press ⏎ to open it.")
                     color: theme.secondaryForeground

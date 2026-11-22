@@ -1,4 +1,5 @@
 import QtQuick
+import Folio 1.0
 import QtQuick.Layouts
 import QtQuick.Effects
 import "Format.js" as Format
@@ -24,6 +25,8 @@ Item {
     required property bool expanded
 
     property bool current: false
+    // Cut and not yet pasted: drawn in the colour of a disabled menu entry.
+    readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
     // In a column to the left: the folder the next column is showing.
     property bool trail: false
     property bool detailed: false
@@ -31,12 +34,16 @@ Item {
     // In the list, a tree: each level indented, and a folder's arrow opens
     // it in place (or closes it).
     property bool tree: false
+    // The list's size step: the row's height and picture grow with it, the
+    // name and details don't, as with the grid's tiles.
+    property real zoom: 1
+    readonly property int picture: Math.round(20 * zoom)
 
     signal clicked(int modifiers)
     signal activated()
     signal toggled()
 
-    implicitHeight: 32
+    implicitHeight: Math.round(32 * zoom)
 
     // The name always gets room: in a narrow window the date goes first,
     // then the size. (The icon says what kind a file is; there's no column
@@ -77,7 +84,9 @@ Item {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: row.tree ? 4 + row.depth * 20 : 14
+        // Each level is indented by half a picture and 10, which keeps an
+        // open folder's arrows under its picture at any size.
+        anchors.leftMargin: row.tree ? 4 + row.depth * (Math.round(row.picture / 2) + 10) : 14
         anchors.rightMargin: 14
         spacing: 12
 
@@ -106,8 +115,10 @@ Item {
         }
 
         Item {
-            implicitWidth: 20
-            implicitHeight: 20
+            objectName: "picture"
+            opacity: row.cut ? 0.4 : 1
+            implicitWidth: row.picture
+            implicitHeight: row.picture
             Image {
                 id: thumb
                 anchors.fill: parent
@@ -129,8 +140,7 @@ Item {
             }
             Rectangle {
                 id: rowMask
-                width: 20
-                height: 20
+                anchors.fill: parent
                 radius: Math.min(4, theme.radius)
                 visible: false
                 layer.enabled: true
@@ -139,40 +149,41 @@ Item {
                 anchors.centerIn: parent
                 visible: !thumb.visible
                 name: row.glyph
-                size: 16
-                color: row.isDir ? theme.accent : theme.secondaryForeground
+                size: Math.round(16 * row.zoom)
+                color: row.isDir && !row.cut ? theme.accent : theme.secondaryForeground
             }
         }
         // The name and the date are aligned explicitly, so that they're
         // mirrored: left as they are, they'd follow their own script, and a
         // Latin name would sit at the far end of a right-to-left row.
-        Text {
+        FolioText {
             Layout.fillWidth: true
             Layout.minimumWidth: 120
             horizontalAlignment: Text.AlignLeft
             text: row.name
-            color: row.current ? theme.accent : theme.foreground
+            textFormat: Text.PlainText
+            color: row.cut ? theme.secondaryForeground : row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
         }
-        Text {
+        // The size and date columns grow with the text, so the system's text
+        // size doesn't push them into the name.
+        FolioText {
             visible: row.showSize
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: Math.round(96 * theme.textScale)
             horizontalAlignment: Text.AlignRight
             text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            size: 12
+            elide: Text.ElideRight
         }
-        Text {
+        FolioText {
             visible: row.showDate
-            Layout.preferredWidth: 96
+            Layout.preferredWidth: Math.round(96 * theme.textScale)
             Layout.leftMargin: 12
             horizontalAlignment: Text.AlignLeft
-            text: {
-                translator.language // Re-read when the language (and so the default locale) changes.
-                return Format.when(row.modified)
-            }
+            text: Format.when(row.modified, translator.dateLocale)
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            size: 12
             elide: Text.ElideRight
         }
         // Points to where the next column opens.
@@ -184,11 +195,23 @@ Item {
         }
     }
 
-    HoverHandler {
-        id: hover
+    DragPicture {
+        id: dragPicture
         // Cleared first: Qt (6.12) reloads a new picture at the size of the
         // one before, which for a grab only warns ("Ignoring sourceSize").
-        onHoveredChanged: if (hovered) row.grabToImage(result => { row.Drag.imageSource = ""; row.Drag.imageSource = result.url })
+        onReady: { row.Drag.imageSource = ""; row.Drag.imageSource = url }
+    }
+
+    HoverHandler {
+        id: hover
+        onHoveredChanged: if (hovered) dragPicture.capture(row)
+    }
+    // Given another file by the list, a row still under the pointer stays
+    // hovered: its picture is retaken, not kept from the file before.
+    ListView.onReused: {
+        row.Drag.imageSource = ""
+        if (hover.hovered)
+            dragPicture.capture(row)
     }
     TapHandler {
         id: tap

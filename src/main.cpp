@@ -2,7 +2,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QFont>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -11,9 +10,11 @@
 #include <QQuickStyle>
 #include <QUrl>
 #include <cstdio>
+#include <memory>
 
 #include "backend.h"
 #include "chooser.h"
+#include "dragpicture.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
 #include "places.h"
@@ -42,18 +43,15 @@ static QString startPath(const QStringList &args, QString *select) {
     return QDir::homePath();
 }
 
-// Omarchy points fontconfig's monospace at the font picked in its menu, so
-// asking for "monospace" follows the user's choice.
 static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     // Settings (the chosen view) go to ~/.config/folio/folio.conf.
     app.setOrganizationName("folio");
     app.setWindowIcon(QIcon::fromTheme("folio"));
-    QFont font("monospace");
-    font.setStyleHint(QFont::Monospace);
-    font.setPixelSize(13);
-    app.setFont(font);
     QQuickStyle::setStyle("Material");
+    // Creatable too: the column view lists each folder on the way here.
+    qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+    qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
 }
 
 // `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
@@ -96,6 +94,9 @@ static int preview(QGuiApplication &app) {
     Translator translator;
     app.installTranslator(&translator);
     Theme theme;
+    // The system's fixed-width font (Omarchy's pick) and its size, followed
+    // live: Folio's own font.
+    theme.followSystemFont();
     Thumbnails thumbnails;
     Previewer previewer;
     previewer.start(path, showHidden, sort);
@@ -115,6 +116,53 @@ static int preview(QGuiApplication &app) {
     return app.exec();
 }
 
+// Folio's shared UI and backend state, built lazily by `folio chooser` on
+// its first dialog so D-Bus activation at login stays fast.
+struct Session {
+    Translator translator;
+    Theme theme;
+    Places places;
+    Thumbnails thumbnails;
+    Plugins plugins;
+    QQmlEngine engine;
+    Windows windows;
+
+    Session() : plugins(translator.language()), windows(&engine, &plugins) {
+        // Installed before anything is translated, and every qsTr() binding is
+        // re-evaluated when the Omarchy language changes.
+        QCoreApplication::installTranslator(&translator);
+        theme.followSystemFont();
+        // Plugins' text follows the language too.
+        QObject::connect(&translator, &Translator::changed, &plugins, [this] { plugins.setLanguage(translator.language()); });
+        QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.addImageProvider("plugin-icon", new PluginIconProvider);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+
+        if (Drives *drives = places.drives()) {
+            // A drive plugged in mounts through the last window used, which can
+            // ask for an encrypted drive's passphrase; with none free, it mounts
+            // without asking.
+            QObject::connect(drives, &Drives::plugged, &windows, [this, drives](const QString &id, const QString &name) {
+                Backend *backend = windows.latest();
+                if (!backend || !backend->mountVolume(id, name))
+                    drives->mountQuietly(id);
+            });
+            QObject::connect(drives, &Drives::notice, &windows, [this](const QString &notice) {
+                if (Backend *backend = windows.latest())
+                    backend->showNotice(notice);
+            });
+            QObject::connect(drives, &Drives::failed, &windows, [this](const QString &message) {
+                if (Backend *backend = windows.latest())
+                    backend->showMessage(message);
+            });
+        }
+    }
+};
+
 int main(int argc, char *argv[]) {
     // `folio chooser`: other apps' Open and Save dialogs. xdg-desktop-portal
     // waits for it as the portal starts, so it mustn't wait on the portal,
@@ -132,62 +180,29 @@ int main(int argc, char *argv[]) {
     // their own, so a window rule can float them.
     app.setDesktopFileName(chooser ? "folio-chooser" : "folio");
 
-    // Installed before anything is translated, and every qsTr() binding is
-    // re-evaluated when the Omarchy language changes.
-    Translator translator;
-    app.installTranslator(&translator);
+    std::unique_ptr<Session> session;
+    const auto ensureSession = [&]() -> Windows * {
+        if (!session)
+            session = std::make_unique<Session>();
+        return &session->windows;
+    };
 
-    Theme theme;
-    Places places;
-    Thumbnails thumbnails;
-    // Plugins' text follows the language too.
-    Plugins plugins(translator.language());
-    QObject::connect(&translator, &Translator::changed, &plugins, [&] { plugins.setLanguage(translator.language()); });
-
-    QQmlEngine engine;
-    QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
-    engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
-    engine.addImageProvider("plugin-icon", new PluginIconProvider);
-    // Creatable too: the column view lists each folder on the way here.
-    qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
-    engine.rootContext()->setContextProperty("translator", &translator);
-    engine.rootContext()->setContextProperty("theme", &theme);
-    engine.rootContext()->setContextProperty("places", &places);
-    engine.rootContext()->setContextProperty("plugins", &plugins);
-
-    Windows windows(&engine, &plugins);
     if (chooser) {
         // Its windows come and go with its dialogs; it quits a minute after
         // the last one instead (see Chooser).
         app.setQuitOnLastWindowClosed(false);
-        if (!Chooser::registerOn(&windows))
+        QObject portal;
+        if (!Chooser::registerOn(&portal, ensureSession))
             return 1;
-    } else {
-        QString select;
-        const QString start = startPath(app.arguments(), &select);
-        if (!windows.open(start, select))
-            return 1;
-        FileManager1::registerOn(&windows);
+        return app.exec();
     }
 
-    if (Drives *drives = places.drives()) {
-        // A drive plugged in mounts through the last window used, which can
-        // ask for an encrypted drive's passphrase; with none free, it mounts
-        // without asking.
-        QObject::connect(drives, &Drives::plugged, &windows, [&windows, drives](const QString &id, const QString &name) {
-            Backend *backend = windows.latest();
-            if (!backend || !backend->mountVolume(id, name))
-                drives->mountQuietly(id);
-        });
-        QObject::connect(drives, &Drives::notice, &windows, [&windows](const QString &notice) {
-            if (Backend *backend = windows.latest())
-                backend->showNotice(notice);
-        });
-        QObject::connect(drives, &Drives::failed, &windows, [&windows](const QString &message) {
-            if (Backend *backend = windows.latest())
-                backend->showMessage(message);
-        });
-    }
+    Windows *windows = ensureSession();
+    QString select;
+    const QString start = startPath(app.arguments(), &select);
+    if (!windows->open(start, select))
+        return 1;
+    FileManager1::registerOn(windows);
 
     return app.exec();
 }

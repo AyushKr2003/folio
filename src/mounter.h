@@ -23,6 +23,10 @@ class Mounter : public QObject {
     Q_PROPERTY(bool asking READ asking NOTIFY askingChanged)
     Q_PROPERTY(QString prompt READ prompt NOTIFY askingChanged)
     Q_PROPERTY(QString user READ user NOTIFY askingChanged)
+    Q_PROPERTY(bool needsDomain READ needsDomain NOTIFY askingChanged)
+    Q_PROPERTY(QString domain READ domain NOTIFY askingChanged)
+    Q_PROPERTY(bool guestAllowed READ guestAllowed NOTIFY askingChanged)
+    Q_PROPERTY(bool canRemember READ canRemember NOTIFY askingChanged)
     // A question's answers, in GVfs's words; empty for a password request.
     Q_PROPERTY(QStringList choices READ choices NOTIFY askingChanged)
     // The request is for a drive's passphrase, not a sign-in.
@@ -36,6 +40,10 @@ public:
     bool asking() const { return m_asking; }
     QString prompt() const { return m_prompt; }
     QString user() const { return m_user; }
+    bool needsDomain() const { return m_needsDomain; }
+    QString domain() const { return m_domain; }
+    bool guestAllowed() const { return m_guestAllowed; }
+    bool canRemember() const { return m_canRemember; }
     QStringList choices() const { return m_choices; }
     bool drive() const { return m_drive; }
     // The volume a drive's mount is for, while busy with one.
@@ -60,9 +68,12 @@ public:
     // Each address mounted this session and the folder GVfs opened for it.
     static QHash<QString, QString> &known();
 
-    // The user's answer to a password request; remembered for this session
-    // only, never written to a keyring without asking.
-    Q_INVOKABLE void providePassword(const QString &user, const QString &password);
+    // The user's answer to a password request; remembered for this session,
+    // or in the keyring when `remember` is asked for.
+    Q_INVOKABLE void providePassword(const QString &user, const QString &password,
+                                     const QString &domain = {}, bool remember = false);
+    // Connects anonymously when the server allows guest access.
+    Q_INVOKABLE void connectAsGuest();
     // The user's answer to a question, by its place among the choices.
     Q_INVOKABLE void choose(int choice);
     // Closes the password request and abandons the mount.
@@ -76,6 +87,7 @@ signals:
 private:
     // GIO's C callbacks, in mounter.cpp.
     friend struct MounterCallbacks;
+    friend class FolioTests;
     void setAsking(bool asking);
     void finish();
     void begin(bool drive, bool verified);
@@ -97,5 +109,9 @@ private:
     bool m_asking = false;
     QString m_prompt;
     QString m_user;
+    bool m_needsDomain = false;
+    QString m_domain;
+    bool m_guestAllowed = false;
+    bool m_canRemember = false;
     QStringList m_choices;
 };

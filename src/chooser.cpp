@@ -310,21 +310,21 @@ void ChooserDialog::Close(const QDBusMessage &message) {
         message.createErrorReply(QDBusError::AccessDenied, QStringLiteral("Only the caller can close its request")));
 }
 
-Chooser::Chooser(Windows *windows)
-    : QDBusAbstractAdaptor(windows), m_windows(windows), m_linger(std::make_unique<QEventLoopLocker>()) {
+Chooser::Chooser(QObject *parent, WindowsFactory windows)
+    : QDBusAbstractAdaptor(parent), m_windows(std::move(windows)), m_linger(std::make_unique<QEventLoopLocker>()) {
     m_idle.setSingleShot(true);
     m_idle.setInterval(60 * 1000);
     connect(&m_idle, &QTimer::timeout, this, [this] { m_linger.reset(); });
     m_idle.start();
 }
 
-bool Chooser::registerOn(Windows *windows) {
+bool Chooser::registerOn(QObject *object, WindowsFactory windows) {
     ChooserFilter::registerTypes();
     QDBusConnection bus = QDBusConnection::sessionBus();
-    new Chooser(windows);
+    new Chooser(object, std::move(windows));
     // The portal asks for the object's properties as soon as the name is
     // there, so the object comes first.
-    return bus.registerObject("/org/freedesktop/portal/desktop", windows)
+    return bus.registerObject("/org/freedesktop/portal/desktop", object)
            && bus.registerService("org.freedesktop.impl.portal.desktop.folio");
 }
 
@@ -361,8 +361,9 @@ void Chooser::open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, con
     auto *dialog = new ChooserDialog(request, message.service(), [bus, message](uint response, const QVariantMap &results) mutable {
         bus.send(message.createReply(QVariantList{response, results}));
     });
-    Backend *backend = bus.registerObject(handle.path(), dialog, QDBusConnection::ExportScriptableSlots)
-                           ? m_windows->open(request.folder, {}, dialog)
+    Windows *windows = m_windows();
+    Backend *backend = windows && bus.registerObject(handle.path(), dialog, QDBusConnection::ExportScriptableSlots)
+                           ? windows->open(request.folder, {}, dialog)
                            : nullptr;
     if (!backend) {
         dialog->respond(2, {});

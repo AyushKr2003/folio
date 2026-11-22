@@ -32,7 +32,7 @@ FolioDialog {
 
     Keys.onEscapePressed: fileOps.dropClash()
 
-    Text {
+    FolioText {
         Layout.fillWidth: true
         text: dialog.merge ? qsTr("Merging adds what's in this folder to the one there. What has the same name inside is replaced, and the replaced items go to the trash.")
                            : qsTr("Replacing moves the one there now to the trash.")
@@ -66,7 +66,7 @@ FolioDialog {
                     color: theme.accentForeground
                 }
             }
-            Text {
+            FolioText {
                 text: forAll.text
                 color: forAll.visualFocus ? theme.brightForeground : theme.foreground
             }

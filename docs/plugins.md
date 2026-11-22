@@ -568,10 +568,12 @@ stands.
 ```
 
 It requires nothing, so the folder keeps its mark without `dropbox-cli`.
-`status` prints `{}` without a `~/Dropbox` folder; otherwise the mark,
-plus, when `dropbox-cli` is there, `syncing` (warning) or `stopped` (error)
-from `dropbox-cli status`, and `"actions": ["link"]` while Dropbox runs
-(`"actions": []` otherwise, since leaving `actions` out would offer the link). `link`
+`status` prints `{}` without a `~/Dropbox` folder; otherwise the mark (no
+status: Dropbox shows its own), and `"actions": ["link"]` while Dropbox runs
+(`"actions": []` otherwise, since leaving `actions` out would offer the link),
+and a `"state"` Folio ignores (`syncing`, `up to date` or `stopped`), there
+only so the poll prints something new when a sync finishes and files'
+details are asked again. `link`
 runs `dropbox-cli sharelink` and prints `{"copy": link, "notice": ["Dropbox
 link for %1 copied.", name]}`. `filestatus` prints `[["Dropbox", status]]`
 with what `dropbox-cli filestatus` says of the file (`up to date`, `syncing`

@@ -14,7 +14,10 @@
 #include <memory>
 #include <functional>
 #include <thread>
+#include <algorithm>
+#include <cmath>
 #include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -32,6 +35,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSemaphore>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -48,6 +52,7 @@
 #include "backend.h"
 #include "chooser.h"
 #include "disks.h"
+#include "dragpicture.h"
 #include "fileops.h"
 #include "foldermodel.h"
 #include "mounter.h"
@@ -58,6 +63,14 @@
 #include "thumbnails.h"
 #include "translator.h"
 #include "windows.h"
+#include <algorithm>
+#include <random>
+
+// GIO's headers use `signals` as a struct member, which Qt defines as a
+// keyword.
+#undef signals
+#include <gio/gio.h>
+#define signals Q_SIGNALS
 
 // Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
 // as long as the returned guard does.
@@ -82,6 +95,17 @@ static std::unique_ptr<QTemporaryDir> elsewhere()
     if (!dir->isValid() || FileOps::sameDrive(dir->path(), QDir::tempPath()))
         return {};
     return dir;
+}
+
+// WCAG contrast, to check that the tooltip colors read on a palette.
+static double contrast(const QColor &a, const QColor &b)
+{
+    auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
+    const auto lum = [&](const QColor &c) {
+        return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+    };
+    const double x = lum(a), y = lum(b);
+    return (std::max(x, y) + .05) / (std::min(x, y) + .05);
 }
 
 // `tailscale status --json`, trimmed to what the Tailscale plugin reads, for
@@ -547,9 +571,248 @@ class FolioTests : public QObject {
 private slots:
     void initTestCase()
     {
+        qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
         // No test ever reaches the real udisks, which would change real disks.
         fakeDisks({});
         Backend::setSettingsFile(settings.filePath("folio.conf"));
+    }
+
+    void dragPicturesKeepTheLatestImage()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import Folio 1.0
+            Window {
+                width: 160; height: 64; visible: true
+                DragPicture { id: picture; objectName: "picture" }
+                Rectangle { objectName: "red"; width: 24; height: 24; color: "red" }
+                Rectangle { objectName: "green"; x: 32; width: 24; height: 24; color: "lime" }
+                Image { objectName: "preview"; x: 96; width: 24; height: 24; source: picture.url }
+                Image { objectName: "later"; x: 128; width: 24; height: 24 }
+            }
+        )", QUrl("file:///DragPictureTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *picture = root->findChild<DragPicture *>("picture");
+        auto *red = root->findChild<QQuickItem *>("red");
+        auto *green = root->findChild<QQuickItem *>("green");
+        auto *preview = root->findChild<QQuickItem *>("preview");
+        auto *later = root->findChild<QQuickItem *>("later");
+        QVERIFY(picture && red && green && preview && later);
+        QSignalSpy ready(picture, &DragPicture::ready);
+        const auto shown = [&](QQuickItem *image) {
+            // grabWindow returns physical pixels, including at high DPI.
+            const auto frame = window->grabWindow();
+            const QPointF at = image->mapToScene(QPointF(12, 12)) * window->devicePixelRatio();
+            return frame.isNull() ? QColor() : frame.pixelColor(at.toPoint());
+        };
+        QVERIFY(picture->capture(red));
+        QTRY_COMPARE(ready.count(), 1);
+        const QUrl first = picture->url();
+        QVERIFY(!first.isEmpty());
+        QTRY_COMPARE(shown(preview), QColor(Qt::red));
+        // The URL must stay usable after QML's garbage collection, until
+        // another capture replaces it, rather than referring to freed data.
+        // Release the first consumer's pixels before collecting, then load
+        // the saved URL in an initially empty Image.
+        QVERIFY(preview->setProperty("source", QUrl()));
+        engine.collectGarbage();
+        QVERIFY(later->setProperty("source", first));
+        QTRY_COMPARE(shown(later), QColor(Qt::red));
+        QVERIFY(later->setProperty("source", QUrl()));
+        ready.clear();
+        QVERIFY(picture->capture(red));
+        QVERIFY(picture->capture(green));
+        QTRY_COMPARE(ready.count(), 1);
+        QVERIFY(picture->url() != first);
+        QTRY_COMPARE(shown(preview), QColor(Qt::green));
+        QVERIFY(!picture->capture(nullptr));
+        QCOMPARE(ready.count(), 1);
+        QTRY_COMPARE(shown(preview), QColor(Qt::green));
+    }
+
+    void dragPicturesAllowPendingItemsAndWindowsToDisappear()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import Folio 1.0
+            Window {
+                width: 64; height: 64; visible: true
+                Item {
+                    objectName: "delegate"; anchors.fill: parent
+                    DragPicture { objectName: "picture" }
+                    Rectangle { objectName: "source"; width: 24; height: 24; color: "red" }
+                }
+            }
+        )", QUrl("file:///PendingDragPictureTest.qml"));
+        // Remove just the source, the delegate and its helper while the
+        // window keeps rendering, or the whole window, with a grab queued.
+        for (int i = 0; i < 18; ++i) {
+            std::unique_ptr<QObject> root(component.create());
+            QVERIFY2(root, qPrintable(component.errorString()));
+            auto *window = qobject_cast<QQuickWindow *>(root.get());
+            QVERIFY(QTest::qWaitForWindowExposed(window));
+            auto *picture = root->findChild<DragPicture *>("picture");
+            auto *source = root->findChild<QQuickItem *>("source");
+            QVERIFY(picture && source);
+            QSignalSpy ready(picture, &DragPicture::ready);
+            QVERIFY(picture->capture(source));
+            if (i % 3 == 2) {
+                QPointer<DragPicture> closing(picture);
+                root.reset();
+                QVERIFY(closing.isNull());
+                QCoreApplication::processEvents();
+            } else {
+                if (i % 3 == 0) {
+                    delete source;
+                } else {
+                    // Scrolling away removes the source and helper while
+                    // their window stays open to finish the pending capture.
+                    QPointer<DragPicture> removedPicture(picture);
+                    QPointer<QQuickItem> removedSource(source);
+                    auto *delegate = root->findChild<QQuickItem *>("delegate");
+                    QVERIFY(delegate);
+                    delete delegate;
+                    QVERIFY(removedPicture.isNull());
+                    QVERIFY(removedSource.isNull());
+                }
+                // A rendered frame is the boundary for the pending grab.
+                QSignalSpy frame(window, &QQuickWindow::frameSwapped);
+                window->update();
+                QTRY_VERIFY(!frame.isEmpty());
+                QCOMPARE(ready.count(), 0);
+            }
+        }
+    }
+
+    void fileDelegatesPrepareDragPictures_data()
+    {
+        QTest::addColumn<QString>("delegate");
+        QTest::newRow("list-and-columns") << QString("FileRow");
+        QTest::newRow("grid") << QString("FileTile");
+    }
+
+    void fileDelegatesPrepareDragPictures()
+    {
+        QFETCH(QString, delegate);
+        QTemporaryDir home;
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(QString(R"(
+            import QtQuick
+            Window {
+                width: 640; height: 240; visible: true
+                %1 {
+                    id: entry; objectName: "entry"; width: 300; y: 20; height: %3
+                    index: 0; name: "notes.txt"; path: "/notes.txt"; isDir: false
+                    kind: "text"; mime: "text/plain"; extension: "TXT"
+                    size: 1; modified: new Date(0); itemCount: -1; icon: ""; selected: false
+                    %2
+                }
+                function pictureUrl() { return String(entry.Drag.imageSource) }
+            }
+        )").arg(delegate, delegate == "FileRow" ? "depth: 0; expanded: false" : "",
+               delegate == "FileRow" ? "32" : "160").toUtf8(),
+                          QUrl::fromLocalFile(sourceFolder() + "/DelegateDragPictureTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *entry = root->findChild<QQuickItem *>("entry");
+        QVERIFY(entry);
+        // Move out and back in: the real hover handler must precompute the
+        // picture and hand its still-live URL to Qt's drag machinery.
+        QTest::mouseMove(window, QPoint(600, 220));
+        QTest::mouseMove(window, entry->mapToScene(QPointF(100, 16)).toPoint());
+        QVariant url;
+        QTRY_VERIFY((QMetaObject::invokeMethod(root.get(), "pictureUrl", Q_RETURN_ARG(QVariant, url)),
+                     !url.toString().isEmpty()));
+        auto *picture = entry->findChild<DragPicture *>();
+        QVERIFY(picture);
+        QCOMPARE(QUrl(url.toString()), picture->url());
+    }
+
+    // The list gives the rows it scrolls out to the files it scrolls in.
+    // One that lands under a still pointer is still hovered, so it takes a
+    // new picture for dragging there rather than keep its last file's.
+    void listRowsReusedUnderThePointerRetakeTheirDragPicture()
+    {
+        QTemporaryDir home;
+        for (int i = 0; i < 100; ++i)
+            write(home.filePath(QString("file%1.txt").arg(i, 3, 10, QChar('0'))), "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), sourceFolder() + "/i18n");
+        std::unique_ptr<QQmlPropertyMap> plugins(QQmlPropertyMap::create());
+        plugins->insert("views", QVariantMap{});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", plugins.get());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->count(), 100);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 640; height: 320; visible: true
+                FolderList { id: list; objectName: "list"; anchors.fill: parent }
+                function pictureUrl(index) { return String(list.itemAtIndex(index).Drag.imageSource) }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ReusedRowTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *list = root->findChild<QQuickItem *>("list");
+        QVERIFY(list);
+        const auto row = [&](int index) {
+            QQuickItem *item = nullptr;
+            QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, item), Q_ARG(int, index));
+            return item;
+        };
+        const auto picture = [&](int index) {
+            QVariant url;
+            QMetaObject::invokeMethod(root.get(), "pictureUrl", Q_RETURN_ARG(QVariant, url), Q_ARG(QVariant, index));
+            return url.toString();
+        };
+        QTRY_VERIFY(row(2));
+        QTest::mouseMove(window, QPoint(600, 300));
+        QTest::mouseMove(window, row(2)->mapToScene(QPointF(100, 16)).toPoint());
+        QTRY_VERIFY(!picture(2).isEmpty());
+        const QString before = picture(2);
+
+        // Pages on, between two frames, another file is where file 2 was,
+        // in the row file 2 had.
+        QPointer<QQuickItem> reused = row(2);
+        QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, 50), Q_ARG(int, 1));
+        QMetaObject::invokeMethod(list, "forceLayout");
+        QVERIFY(reused && reused->isVisible());
+        const int index = reused->property("index").toInt();
+        QVERIFY(index > 2);
+        QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, index - 2), Q_ARG(int, 1));
+        QMetaObject::invokeMethod(list, "forceLayout");
+        QCOMPARE(row(index), reused.data());
+        QTRY_VERIFY(!picture(index).isEmpty() && picture(index) != before);
     }
 
     void foldersRememberTheirOrderAndPassItDown()
@@ -674,6 +937,191 @@ private slots:
         QStringList expected({"Downloads:modified", QFileInfo(home.path()).fileName() + ":name", "deep:size", "monkey:oldest"});
         expected.sort();
         QTRY_COMPARE(orders(), expected);
+    }
+
+    void columnsLoadAncestorsWhenFirstShown_data()
+    {
+        QTest::addColumn<bool>("mirrored");
+        QTest::newRow("ltr") << false;
+        QTest::newRow("rtl") << true;
+    }
+
+    void columnsLoadAncestorsWhenFirstShown()
+    {
+        QFETCH(bool, mirrored);
+        QTemporaryDir home, outside;
+        QVERIFY(home.isValid());
+        QVERIFY(outside.isValid());
+        for (int i = 0; i < 40; ++i)
+            QVERIFY(QDir().mkpath(home.filePath("ahead" + QString::number(i))));
+        QString deep = home.path();
+        for (int depth = 0; depth < 8; ++depth) {
+            deep += "/step";
+            QVERIFY(QDir().mkpath(deep));
+        }
+        write(deep + "/last.txt", "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                property bool mirrored
+                width: 783; height: 480; visible: true
+                Item {
+                    anchors.fill: parent
+                    LayoutMirroring.enabled: mirrored
+                    LayoutMirroring.childrenInherit: true
+                    FolderColumns { id: columns; anchors.fill: parent }
+                }
+                function pick(path) { columns.startAt(path) }
+                function oldest() {
+                    const flick = columns.children[columns.children.length - 1]
+                    flick.contentX = mirrored ? flick.contentWidth - flick.width : 0
+                }
+                function newest() { columns.revealEnd() }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsLazyTest.qml"));
+        std::unique_ptr<QObject> root(component.createWithInitialProperties({{"mirrored", mirrored}}));
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        const auto lists = [&] {
+            QMap<QString, QQuickItem *> found;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                auto *model = qobject_cast<FolderModel *>(item->property("model").value<QObject *>());
+                if (model && !model->path().isEmpty())
+                    found.insert(model->path(), item);
+                for (auto *child : item->childItems()) walk(child);
+            };
+            walk(window->contentItem());
+            return found;
+        };
+        // Pick a deep place as the sidebar does: ancestors start hidden.
+        QMetaObject::invokeMethod(root.get(), "pick", Q_ARG(QVariant, deep));
+        backend.navigate(deep);
+        QTRY_COMPARE(backend.folder()->count(), 1);
+        QTRY_VERIFY(lists().size() >= 2);
+        QVERIFY2(lists().size() <= 3, "hidden ancestors must not create models");
+        QVERIFY(!lists().contains(home.path()));
+        write(home.filePath("late.txt"), "fresh");
+        QMetaObject::invokeMethod(root.get(), "oldest");
+        QTRY_VERIFY(lists().contains(home.path()));
+        auto *column = lists().value(home.path());
+        auto *model = qobject_cast<FolderModel *>(column->property("model").value<QObject *>());
+        QTRY_VERIFY(model->indexOf("late.txt") >= 0);
+        QTRY_VERIFY(column->property("contentHeight").toReal() > 800);
+        const auto highlighted = [&] {
+            bool found = false;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("path").toString() == home.filePath("step") && item->property("trail").toBool()) {
+                    const qreal y = item->mapToItem(column, QPointF()).y();
+                    found = y >= 0 && y + item->height() <= column->height();
+                }
+                for (auto *child : item->childItems()) walk(child);
+            };
+            walk(column);
+            return found;
+        };
+        QTRY_VERIFY(highlighted());
+        column->setProperty("contentY", 300.0);
+        const qreal scroll = column->property("contentY").toReal();
+        QMetaObject::invokeMethod(root.get(), "newest");
+        const auto offscreen = [&] {
+            const qreal x = column->mapToItem(window->contentItem(), QPointF()).x();
+            return x + column->width() <= 0 || x >= window->width();
+        };
+        QTRY_VERIFY(offscreen());
+        QMetaObject::invokeMethod(root.get(), "oldest");
+        QTRY_VERIFY(!offscreen());
+        QTRY_COMPARE(lists().value(home.path()), column);
+        QCOMPARE(column->property("contentY").toReal(), scroll);
+        // The real drop handler still targets this ancestor after revealing it.
+        const QString parcel = outside.filePath("parcel.txt");
+        write(parcel, "parcel");
+        QMimeData data;
+        data.setUrls({QUrl::fromLocalFile(parcel)});
+        // A file row lets the column handle the drop; a folder row would
+        // correctly drop into that child instead.
+        column->setProperty("contentY", column->property("contentHeight").toReal() - column->height());
+        QQuickItem *fileRow = nullptr;
+        const auto findFile = [&] {
+            fileRow = nullptr;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("path").toString() == home.filePath("late.txt")) fileRow = item;
+                for (auto *child : item->childItems()) walk(child);
+            };
+            walk(column);
+            if (!fileRow) return false;
+            const qreal y = fileRow->mapToItem(column, QPointF()).y();
+            return y >= 0 && y + fileRow->height() <= column->height();
+        };
+        QTRY_VERIFY(findFile());
+        const QPointF at = fileRow->mapToItem(window->contentItem(), QPointF(100, fileRow->height() / 2));
+        QDragEnterEvent enter(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QGuiApplication::sendEvent(window, &enter);
+        QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+        QGuiApplication::sendEvent(window, &drop);
+        QVERIFY(drop.isAccepted());
+        QTRY_VERIFY(QFileInfo::exists(home.filePath("parcel.txt")));
+    }
+
+    // A name that looks like markup is drawn as written, in the list and
+    // the grid alike, not as rich text that's bold and without its tags.
+    void namesDrawAsPlainText()
+    {
+        QTemporaryDir home;
+        const QString name = "<b>bold.txt";
+        write(home.filePath(name), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        for (const QString &view : QStringList{"FolderList", "FolderGrid"}) {
+            QQmlComponent component(&engine);
+            component.setData(QString(R"(
+                import QtQuick
+                Window {
+                    width: 900; height: 480; visible: true
+                    %1 { anchors.fill: parent }
+                }
+            )").arg(view).toUtf8(), QUrl::fromLocalFile(sourceFolder() + "/PlainNamesTest.qml"));
+            std::unique_ptr<QObject> root(component.create());
+            QVERIFY2(root, qPrintable(component.errorString()));
+            QList<QQuickItem *> labels;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("text").toString() == name && item->property("textFormat").isValid())
+                    labels << item;
+                for (auto *child : item->childItems())
+                    walk(child);
+            };
+            QTRY_VERIFY2((labels.clear(), walk(qobject_cast<QQuickWindow *>(root.get())->contentItem()), !labels.isEmpty()),
+                         qPrintable(view));
+            for (QQuickItem *label : labels)
+                QCOMPARE(label->property("textFormat").toInt(), int(Qt::PlainText));
+        }
     }
 
     // A place picked in the sidebar is the first column shown, with the
@@ -1071,6 +1519,29 @@ private slots:
                  qPrintable(QString("told at %1 of %2").arg(lookedWhenTold).arg(looks)));
     }
 
+    void folderSearchFiltersByExtension()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos/ext.d");
+        write(dir.filePath("IMG_001.JPG"), "x");
+        write(dir.filePath("IMG_002.png"), "x");
+        write(dir.filePath("Photos/notes.txt"), "x");
+        write(dir.filePath("Photos/IMG_x.jpg"), "x");
+        auto names = [&](const QString &query) {
+            QStringList out;
+            for (const auto &e : FolderModel::search(dir.path(), query, false, "name"))
+                out << e.name;
+            return out.join(", ");
+        };
+        QCOMPARE(names("ext:jpg"), QString("IMG_001.JPG, Photos/IMG_x.jpg"));
+        QCOMPARE(names("ext:.PNG,txt"), QString("IMG_002.png, Photos/notes.txt"));
+        QCOMPARE(names("img ext:jpg"), QString("IMG_001.JPG, Photos/IMG_x.jpg"));
+        // Plain text is matched as typed, spaces and all.
+        write(dir.filePath("my  notes.txt"), "x");
+        write(dir.filePath("my notes.txt"), "x");
+        QCOMPARE(names("my  notes"), QString("my  notes.txt"));
+    }
+
     void folderSearchSkipsSymlinkedFolders()
     {
         // A link back up the tree would otherwise be walked round and round.
@@ -1155,6 +1626,56 @@ private slots:
         backend.folder()->setQuery(QString());
         QTRY_VERIFY(!backend.folder()->loading());
         QTRY_COMPARE(cursor(), home.filePath("files/file-10.txt"));
+    }
+
+    void newFolderInAnEarlierColumnAsksItsName()
+    {
+        // The columns view makes a folder in whichever column was right-
+        // clicked, not only the one the pane is in; it's named all the same.
+        QTemporaryDir home, plugins;
+        QVERIFY(QDir(home.path()).mkdir("inner"));
+        Backend backend(home.filePath("inner"));
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        FileOps fileOps;
+        Plugins bundled("en", {plugins.path()}, home.filePath("folio.conf"));
+        Translator translator(home.filePath("language"), home.path());
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &bundled);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("places", &places);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            ApplicationWindow {
+                width: 900; height: 620; visible: true
+                property string viewMode: "columns"
+                property real zoom: 1
+                property bool split: false
+                property bool helpVisible: false
+                property var activePane: null
+                function raise() {}
+                function requestActivate() {}
+                FolderPane { id: pane; anchors.fill: parent; focus: true }
+                Component.onCompleted: activePane = pane
+                readonly property var paneItem: pane
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/NewFolderNameTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *pane = root->property("paneItem").value<QObject *>();
+        QVERIFY(pane);
+        QVERIFY(!pane->property("asking").toBool());
+
+        fileOps.newFolder(home.path());
+        QVERIFY(QFileInfo(home.filePath("Untitled Folder")).isDir());
+        QTRY_VERIFY(pane->property("asking").toBool());
     }
 
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
@@ -1338,6 +1859,66 @@ private slots:
         other["isDefault"] = true;
         const QVariantMap twin{{"id", "nvim-qt.desktop"}, {"name", "Neovim"}, {"isDefault", false}};
         QCOMPARE(FileOps::foldHandlerRepeats({other, writer, twin}), QVariantList({other, writer, twin}));
+    }
+
+    void fileOpsMakesFilesExecutable()
+    {
+        // Run is allowed for whoever may read, and taken away from
+        // everyone. Only for one's own files: not folders, whose x means
+        // something else, nor links.
+        QTemporaryDir dir;
+        const QString script = dir.filePath("run.sh"), secret = dir.filePath("secret.sh"),
+                      link = dir.filePath("link"), folder = dir.filePath("folder");
+        write(script, "#!/bin/sh\n");
+        write(secret, "#!/bin/sh\n");
+        QCOMPARE(::chmod(QFile::encodeName(script).constData(), 0644), 0);
+        QCOMPARE(::chmod(QFile::encodeName(secret).constData(), 0600), 0);
+        QVERIFY(QFile::link(script, link));
+        QVERIFY(QDir().mkdir(folder));
+        const auto mode = [](const QString &path) {
+            struct stat st;
+            return ::stat(QFile::encodeName(path).constData(), &st) == 0 ? st.st_mode & 07777 : 0u;
+        };
+        FileOps ops;
+        QVERIFY(ops.canSetExecutable({script, secret}));
+        QVERIFY(!ops.canSetExecutable({script, folder}));
+        QVERIFY(!ops.canSetExecutable({link}));
+        QVERIFY(!ops.canSetExecutable({}));
+        if (::geteuid() != 0)
+            QVERIFY(!ops.canSetExecutable({"/etc/hostname"}));
+        QVERIFY(!ops.executable({script, secret}));
+
+        // The details pane reads the item again on hearing which changed.
+        QSignalSpy changed(&ops, &FileOps::modesChanged);
+        ops.setExecutable({script, secret, folder}, true);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(changed.at(0).at(0).toStringList(), QStringList({script, secret}));
+        QCOMPARE(mode(script), 0755u);
+        QCOMPARE(mode(secret), 0700u);
+        QVERIFY(ops.executable({script, secret}));
+        QCOMPARE(::chmod(QFile::encodeName(secret).constData(), 0600), 0);
+        QVERIFY(!ops.executable({script, secret}));
+
+        ops.setExecutable({script, secret}, false);
+        QCOMPARE(mode(script), 0644u);
+        QCOMPARE(mode(secret), 0600u);
+
+        // A file gone since the menu opened says so; the folder beside it
+        // is still left alone without a word.
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.setExecutable({dir.filePath("gone.sh"), folder}, true);
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(failed.at(0).at(0).toString().contains("gone.sh"));
+
+        // Not while other work is under way: a copy still being written
+        // would put its source's mode back once it's done.
+        ops.trash({dir.filePath("gone.txt")});
+        QVERIFY(!ops.busy().isEmpty());
+        ops.setExecutable({script}, true);
+        QCOMPARE(failed.count(), 2);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
+        QCOMPARE(mode(script), 0644u);
+        QTRY_VERIFY(ops.busy().isEmpty());
     }
 
     void fileOpsDeleteForeverOutsideTheTrash()
@@ -1715,6 +2296,94 @@ private slots:
         plain.setUrls({QUrl::fromLocalFile("/tmp/x.png")});
         QCOMPARE(FileOps::pathsFrom(&plain, &cut), QStringList({"/tmp/x.png"}));
         QVERIFY(!cut);
+    }
+
+    void fileOpsForgetTheCutWhenTheClipboardMovesOn()
+    {
+        // Cut items stay cut, in every pane, until the paste lands or something else takes the clipboard.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        write(from.filePath("b.txt"), "b");
+        FileOps ops, other;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(other.isCut(from.filePath("a.txt")));
+        QVERIFY(ops.isCut(from.filePath("a.txt")) && !ops.isCut(from.filePath("b.txt")));
+        // What's inside a cut folder goes with it, but not a neighbour whose name starts the same.
+        QVERIFY(QDir(from.path()).mkpath("box/inner") && QDir(from.path()).mkpath("box2"));
+        ops.cut({from.filePath("box")});
+        QTRY_VERIFY(ops.isCut(from.filePath("box/inner")));
+        QVERIFY(!ops.isCut(from.filePath("box2")) && !ops.isCut(from.path()));
+        ops.copy({from.filePath("a.txt")});
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("b.txt")});
+        QTRY_VERIFY(ops.isCut(from.filePath("b.txt")));
+        ops.cut({from.filePath("a.txt")});
+        QTRY_VERIFY(!ops.isCut(from.filePath("b.txt")));
+
+        QGuiApplication::clipboard()->setText("from another app");
+        QTRY_COMPARE(other.cutCount(), 0);
+        QTRY_COMPARE(ops.cutCount(), 0);
+        ops.cut({from.filePath("a.txt"), from.filePath("b.txt")});
+        QTRY_COMPARE(ops.cutCount(), 2);
+        QTRY_COMPARE(other.cutCount(), 2);
+        ops.paste(to.path());
+        QVERIFY(done.wait(3000));
+        QTRY_COMPARE(ops.cutCount(), 0);
+        QCOMPARE(other.cutCount(), 0);
+    }
+
+    void cutItemsDrawDimmerInEveryView()
+    {
+        QTemporaryDir home;
+        write(home.filePath("cut.txt"), "x");
+        write(home.filePath("kept.txt"), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 2);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap()}});
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    property string view\n"
+                          "    Loader { id: loader; anchors.fill: parent; source: view + '.qml' }\n"
+                          "    function dim(name) {\n"
+                          "        const find = item => {\n"
+                          "            if (item instanceof Text && item.text === name) return item\n"
+                          "            for (const child of Array.from(item.children).concat(item.contentItem ? [item.contentItem] : [])) {\n"
+                          "                const found = find(child); if (found) return found }\n"
+                          "            return null }\n"
+                          "        const text = find(loader.item)\n"
+                          "        return text ? '' + text.color === '' + theme.secondaryForeground : 'not shown'\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/CutViewsTest.qml"));
+        // The columns make a model for each folder on the way, as main() lets them.
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        const auto dim = [](QObject *window, const QString &name) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, "dim", Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, name));
+            return result.toString();
+        };
+        // Drawn dimmer at once in each view, and bright again once a copy takes the clipboard.
+        fileOps.cut({home.filePath("cut.txt")});
+        std::vector<std::unique_ptr<QObject>> windows;
+        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns"}) {
+            windows.emplace_back(component.createWithInitialProperties({{"view", view}}));
+            QVERIFY2(windows.back(), qPrintable(component.errorString()));
+            QTRY_COMPARE(dim(windows.back().get(), "cut.txt"), QString("true"));
+            QTRY_COMPARE(dim(windows.back().get(), "kept.txt"), QString("false"));
+        }
+        fileOps.copy({home.filePath("cut.txt")});
+        for (const auto &window : windows)
+            QTRY_COMPARE(dim(window.get(), "cut.txt"), QString("false"));
     }
 
     void fileOpsCompressAcrossFolders()
@@ -2110,9 +2779,13 @@ private slots:
         QCOMPARE(FileOps::archiveName({dir.filePath("a.txt"), dir.filePath("b.txt")}, dir.path()), QString("Archive.zip"));
 
         QSignalSpy done(&ops, &FileOps::done);
+        QSignalSpy created(&ops, &FileOps::folderCreated);
         ops.newFolder(dir.path());
         ops.newFolder(dir.path());
         QCOMPARE(done.count(), 2);
+        // Each new folder is also announced, for naming straight away.
+        QCOMPARE(created.count(), 2);
+        QCOMPARE(created.first().at(1).toString(), QString("Untitled Folder"));
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder"));
         QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder 2"));
     }
@@ -2186,6 +2859,42 @@ private slots:
         QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
         QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
+    }
+
+    void folderSortsAsTheCollatorCompares()
+    {
+        // Names that differ in case, accents, numbers and nothing at all,
+        // shuffled: sorting by keys gives the order (ties included) a
+        // stable sort comparing every pair gives.
+        QVector<FolderModel::Entry> entries;
+        const QStringList names{"file2.txt", "File10.txt", "file1.TXT", "éclair.png", "eclair.png", "Zebra",
+                                "zebra", "a b.md", "a-b.md", "readme", "README", "10.jpg", "9.jpg"};
+        for (int i = 0; i < 400; ++i) {
+            FolderModel::Entry e;
+            e.name = names[i % names.size()];
+            e.path = QString::number(i);
+            e.isDir = i % 7 == 0;
+            e.size = i % 3;
+            e.modified = QDateTime::fromSecsSinceEpoch(i % 5);
+            e.extension = QFileInfo(e.name).suffix().toUpper();
+            e.kind = i % 2 ? "text" : "image";
+            entries.push_back(e);
+        }
+        std::mt19937 shuffle(7);
+        std::shuffle(entries.begin(), entries.end(), shuffle);
+        for (const QLocale &locale : {QLocale("en_US"), QLocale("sv_SE"), QLocale::c()}) {
+            for (const QString &sort : FolderModel::sortModes()) {
+                auto keyed = entries, compared = entries;
+                FolderModel::sortEntries(keyed, sort, locale);
+                std::stable_sort(compared.begin(), compared.end(), FolderModel::before(sort, locale));
+                QStringList a, b;
+                for (int i = 0; i < keyed.size(); ++i) {
+                    a << keyed[i].path;
+                    b << compared[i].path;
+                }
+                QCOMPARE(a, b);
+            }
+        }
     }
 
     void folderKeepsASelection()
@@ -4086,6 +4795,17 @@ private slots:
         QCOMPARE(model.count(), 1);
     }
 
+    void fileManager1CanStartFolioOnTheFirstRequest()
+    {
+        // "Show in folder" must work before Folio is already running too:
+        // D-Bus starts it and holds ShowItems until it owns the service name.
+        const QString path = sourceFolder() + "/../share/org.freedesktop.FileManager1.service";
+        QVERIFY2(QFileInfo::exists(path), qPrintable(path + " is missing"));
+        const QSettings service(path, QSettings::IniFormat);
+        QCOMPARE(service.value("D-BUS Service/Name").toString(), QString("org.freedesktop.FileManager1"));
+        QCOMPARE(service.value("D-BUS Service/Exec").toString(), QString("/usr/bin/folio"));
+    }
+
     void backendReadsDetailsOffTheUiThread()
     {
         // A picture's size and a text's opening lines are read in the
@@ -4117,6 +4837,93 @@ private slots:
         QTRY_VERIFY(backend.details().contains("width"));
         backend.describe({{"path", photo}, {"kind", "folder"}, {"mime", "inode/directory"}});
         QVERIFY(!backend.details().contains("width"));
+    }
+
+    void detailsNameAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // The details pane names a PDF whose name gives no type as a PDF, from a reading made off the UI thread.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), claimed = dir.filePath("report.zip");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        const QMimeDatabase types;
+        const QString unnamed = "application/octet-stream";
+        const QString pdfName = types.mimeTypeForName("application/pdf").comment();
+        QVERIFY(!pdfName.isEmpty() && pdfName != types.mimeTypeForName(unnamed).comment());
+        Backend backend(dir.path());
+        backend.describe({{"path", pdf}, {"kind", "other"}, {"mime", unnamed}});
+        QVERIFY(backend.details().isEmpty());
+        QTRY_COMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(backend.details().value("path").toString(), pdf);
+        // A name that said a type is believed: the file isn't read for one, alone or with its text.
+        backend.describe({{"path", claimed}, {"kind", "archive"}, {"mime", "application/zip"}});
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QVERIFY(!backend.details().contains("mime"));
+        write(dir.filePath("notes.txt"), "hello");
+        backend.describe({{"path", dir.filePath("notes.txt")}, {"kind", "text"}, {"mime", "text/plain"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
+        QVERIFY(!backend.details().contains("mime"));
+
+        Theme theme(dir.filePath("theme"));
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("places", QVariantMap{{"devices", QVariantList()}, {"home", dir.path()}});
+        engine.rootContext()->setContextProperty("backend", &backend);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "PreviewPane {\n"
+                          "    width: 320; height: 640\n"
+                          "    folderPane: QtObject {\n"
+                          "        property var current: ({})\n"
+                          "        property bool inTrash: false\n"
+                          "        property var paneBackend: ({path: ''})\n"
+                          "        property var paneFileOps: ({appsFor: path => [], defaultAppName: mime => mime === 'application/pdf' ? 'Reader' : ''})\n"
+                          "    }\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function said() { return all(this).filter(item => item.text !== undefined && item.visible).map(item => item.text).join('\\n') }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PreviewPaneTypeTest.qml"));
+        std::unique_ptr<QObject> pane(component.create());
+        QVERIFY2(pane, qPrintable(component.errorString()));
+        const auto said = [&] {
+            QVariant result;
+            QMetaObject::invokeMethod(pane.get(), "said", Q_RETURN_ARG(QVariant, result));
+            return result.toString();
+        };
+        const auto select = [&](const QString &path, const QString &kind, const QString &mime) {
+            pane->property("folderPane").value<QObject *>()->setProperty(
+                "current", QVariantMap{{"path", path}, {"name", QFileInfo(path).fileName()}, {"isDir", false}, {"kind", kind},
+                                       {"mime", mime}, {"size", QFileInfo(path).size()}, {"modified", QFileInfo(path).lastModified()}});
+        };
+        // The type's name and the app its button names both follow the reading.
+        select(pdf, "other", unnamed);
+        QTRY_VERIFY2(said().contains(pdfName), qPrintable(said()));
+        QVERIFY2(said().contains("Open with Reader"), qPrintable(said()));
+        // The next item is never named by the reading made for the last one, also before its own is asked for.
+        select(claimed, "archive", "application/zip");
+        QCOMPARE(backend.details().value("mime").toString(), QString("application/pdf"));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+        QTRY_VERIFY2(said().contains(types.mimeTypeForName("application/zip").comment()), qPrintable(said()));
+        QVERIFY2(!said().contains(pdfName) && !said().contains("Reader"), qPrintable(said()));
+    }
+
+    void backendShowsWhoMayReadWriteAndRun()
+    {
+        // Any file or folder's permissions, as ls writes them, read with
+        // the rest of the details.
+        QTemporaryDir dir;
+        const QString report = dir.filePath("report.pdf"), tools = dir.filePath("tools");
+        write(report, "x");
+        QVERIFY(QDir().mkdir(tools));
+        QCOMPARE(::chmod(QFile::encodeName(report).constData(), 0640), 0);
+        QCOMPARE(::chmod(QFile::encodeName(tools).constData(), 01755), 0);
+        Backend backend(dir.path());
+        backend.describe({{"path", report}, {"kind", "pdf"}, {"mime", "application/pdf"}});
+        QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rw-r-----"));
+        backend.describe({{"path", tools}, {"kind", "folder"}, {"mime", "inode/directory"}});
+        QTRY_COMPARE(backend.details().value("permissions").toString(), QString("rwxr-xr-t"));
     }
 
     void backendReadsTrashNotesOffTheUiThread()
@@ -4152,6 +4959,31 @@ private slots:
         open.mount(uri, false);
         QVERIFY(failed.wait(2000));
         QVERIFY(!open.busy());
+    }
+
+    void mounterSendsTheDomainAsGiven()
+    {
+        // GVfs asks again on the same operation after a failed login; a
+        // domain cleared in between is sent empty, not as it was before.
+        QTemporaryDir dir;
+        Mounter mounter;
+        mounter.mount(QUrl::fromLocalFile(dir.path()).toString(), false);
+        GMountOperation *operation = mounter.m_operation;
+        QVERIFY(operation);
+        g_object_ref(operation);
+        const auto release = qScopeGuard([&] { g_object_unref(operation); });
+        const auto ask = [&] {
+            g_signal_emit_by_name(operation, "ask-password", "Sign in", "me", "WORK",
+                                  GAskPasswordFlags(G_ASK_PASSWORD_NEED_PASSWORD | G_ASK_PASSWORD_NEED_DOMAIN));
+        };
+        ask();
+        QVERIFY(mounter.asking());
+        QCOMPARE(mounter.domain(), QString("WORK"));
+        mounter.providePassword("me", "wrong", "WORK");
+        QCOMPARE(QString::fromUtf8(g_mount_operation_get_domain(operation)), QString("WORK"));
+        ask();
+        mounter.providePassword("me", "right", "");
+        QVERIFY(QString::fromUtf8(g_mount_operation_get_domain(operation)).isEmpty());
     }
 
     void trashFollowsXdgDataHome()
@@ -4190,6 +5022,28 @@ private slots:
         QCOMPARE(names(withDropbox).at(1), QString("Dropbox"));
         QCOMPARE(withDropbox.places().at(1).toMap().value("icon").toString(), QString("folder"));
         QCOMPARE(withDropbox.places().at(0).toMap().value("icon").toString(), QString("documents"));
+        // Omarchy's folder shows Omarchy's mark, from the app's resources.
+        QCOMPARE(withDropbox.places().at(2).toMap().value("name").toString(), QString("Omarchy"));
+        QCOMPARE(withDropbox.places().at(2).toMap().value("icon").toString(), QString(":/omarchy.svg"));
+        QVERIFY(QFile::exists(":/omarchy.svg"));
+    }
+
+    void placesTellOnlyWhatChanged()
+    {
+        // The poll finds the same folders most times: the sidebar isn't
+        // told, so it doesn't make its rows again.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work");
+        Places places(home.path());
+        // Checked before the event loop runs again: the drives, read in
+        // the background, are told when they change, and their free space
+        // may have.
+        QSignalSpy changed(&places, &Places::changed);
+        places.refresh();
+        QCOMPARE(changed.count(), 0);
+        QDir(home.path()).mkpath("Music");
+        places.refresh();
+        QCOMPARE(changed.count(), 1);
     }
 
     void placesPinFoldersAsGtkBookmarks()
@@ -4320,6 +5174,7 @@ private slots:
         QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net,user=me"), QString("studio.example.ts.net"));
         QCOMPARE(Backend::mountLabel("sftp:host=files.example.com"), QString("files.example.com"));
         QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
+        QCOMPARE(Backend::mountLabel("nfs:host=nas,prefix=%2Fsrv%2Fexport"), QString("nas"));
         QCOMPARE(Backend::mountLabel("ftp:host=ftp.example.com"), QString("ftp.example.com"));
         QCOMPARE(Backend::mountLabel("dav:host=cloud.example.com,ssl=true,prefix=%2Fremote.php"), QString("cloud.example.com"));
     }
@@ -4331,14 +5186,39 @@ private slots:
         // the mount itself.
         QCOMPARE(Backend::serverAddress("sftp://nas"), QString("sftp://nas/"));
         QCOMPARE(Backend::serverAddress("  SFTP://me@nas:2222/srv/My Files "), QString("sftp://me@nas:2222/srv/My%20Files"));
+        QCOMPARE(Backend::serverAddress("ssh://me@nas:2222/srv"), QString("sftp://me@nas:2222/srv"));
         QCOMPARE(Backend::serverAddress("smb://nas/media/Films"), QString("smb://nas/media/Films"));
+        QCOMPARE(Backend::serverAddress("smb://nas"), QString("smb://nas/"));
+        QCOMPARE(Backend::serverAddress("cifs://nas/media"), QString("smb://nas/media"));
+        QCOMPARE(Backend::serverAddress("\\\\nas"), QString("smb://nas/"));
+        QCOMPARE(Backend::serverAddress("\\\\nas\\media\\Films"), QString("smb://nas/media/Films"));
+        QCOMPARE(Backend::serverAddress("\\\\nas\\media\\Project#1"), QString("smb://nas/media/Project%231"));
+        QCOMPARE(Backend::serverAddress("nfs://nas/srv/export"), QString("nfs://nas/srv/export"));
         QCOMPARE(Backend::serverAddress("ftp://ftp.example.com/pub/"), QString("ftp://ftp.example.com/pub/"));
+        QCOMPARE(Backend::serverAddress("ftps://ftp.example.com/pub/"), QString("ftps://ftp.example.com/pub/"));
         QCOMPARE(Backend::serverAddress("davs://cloud.example.com/remote.php/dav/files/me"),
                  QString("davs://cloud.example.com/remote.php/dav/files/me"));
+        QCOMPARE(Backend::serverAddress("webdavs://cloud.example.com/dav"), QString("davs://cloud.example.com/dav"));
+        QCOMPARE(Backend::serverAddress("webdav://10.0.0.5:8080"), QString("dav://10.0.0.5:8080/"));
         QCOMPARE(Backend::serverAddress("dav://10.0.0.5:8080"), QString("dav://10.0.0.5:8080/"));
         // Paths, other schemes and addresses without a server are not.
-        for (const char *text : {"~/Work", "/etc", "Work/folio", "file:///etc", "http://example.com", "sftp://", "smb:/nas"})
-            QVERIFY2(Backend::serverAddress(text).isEmpty(), text);
+        for (const char *text : {"~/Work", "/etc", "Work/folio", "file:///etc", "http://example.com", "sftp://", "smb:/nas", "\\\\"}) {
+            QString problem;
+            QVERIFY2(Backend::serverAddress(text, &problem).isEmpty(), text);
+            QVERIFY2(problem.isEmpty(), text);
+        }
+
+        // An address that needs an export, or embeds a password, is refused
+        // with the reason why, and goTyped shows that reason.
+        QTemporaryDir home;
+        Backend backend(home.path());
+        for (const char *incomplete : {"nfs://nas", "nfs://nas/", "sftp://me:secret@nas/"}) {
+            QString problem;
+            QVERIFY2(Backend::serverAddress(incomplete, &problem).isEmpty(), incomplete);
+            QVERIFY2(!problem.isEmpty(), incomplete);
+            QVERIFY(!backend.goTyped(incomplete));
+            QCOMPARE(backend.message(), problem);
+        }
     }
 
     void pluginsReadTheirManifests()
@@ -4915,6 +5795,62 @@ private slots:
         QCOMPARE(result->copy, QString("https://git.example.com/a.txt"));
     }
 
+    void fileMenuDrawsNoLinesTogetherInTheTrash()
+    {
+        QTemporaryDir data, home;
+        const auto restore = dataHomeAt(data.path());
+        QVERIFY(QDir().mkpath(data.filePath("Trash/files/folder")));
+        QVERIFY(QDir().mkpath(data.filePath("Trash/info")));
+        write(data.filePath("Trash/files/notes.txt"), "x");
+        Plugins plugins("en", {}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        Places places(home.path());
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        QQmlComponent component(&engine);
+        // What shows, with a line as "-".
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    FileMenu { id: menu }\n"
+                          "    function entries(target, folder) {\n"
+                          "        menu.show(target, folder)\n"
+                          "        const shown = []\n"
+                          "        for (let i = 0; i < menu.count; ++i) {\n"
+                          "            const entry = menu.itemAt(i)\n"
+                          "            if (entry && entry.visible) shown.push(entry.text || (entry.subMenu ? entry.subMenu.title : '-'))\n"
+                          "        }\n"
+                          "        menu.close()\n"
+                          "        return shown.join(' ')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FileMenuTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const QString trash = data.filePath("Trash/files");
+        const auto entries = [&](const QString &name, bool isDir) {
+            QVariant shown;
+            const QVariant target = QVariantMap{{"path", trash + "/" + name}, {"name", name}, {"isDir", isDir}};
+            QMetaObject::invokeMethod(window.get(), "entries", Q_RETURN_ARG(QVariant, shown),
+                                      Q_ARG(QVariant, target), Q_ARG(QVariant, trash));
+            return shown.toString();
+        };
+        // A file and a folder in the trash: one line before Delete…, and no terminal.
+        for (const auto &[name, isDir] : {std::pair{QString("notes.txt"), false}, std::pair{QString("folder"), true}}) {
+            const QString shown = entries(name, isDir);
+            QVERIFY2(shown.endsWith("Copy Path - Delete…") && !shown.contains("- -"), qPrintable(shown));
+            QVERIFY2(!shown.contains("Open Terminal Here"), qPrintable(shown));
+        }
+    }
+
     void fileMenuPutsPluginActionsBeforeShare()
     {
         QTemporaryDir home, folder;
@@ -4967,11 +5903,12 @@ private slots:
             const qsizetype from = all.indexOf("Compress"), to = all.indexOf("Share");
             return from < 0 || to < from ? all : all.mid(from + 1, to - from - 1);
         };
-        // Plain entries, then submenus, together after Compress and before
-        // Share, and in that order again however often the menu opens.
-        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
-        QCOMPARE(around("photo.png", "image/png"), QStringList({"Copy To"}));
-        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
+        // Make Executable (they're our own files), then plain entries, then
+        // submenus, together after Compress and before Share, and in that
+        // order again however often the menu opens.
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Make Executable", "Copy Git Link", "Copy To"}));
+        QCOMPARE(around("photo.png", "image/png"), QStringList({"Make Executable", "Copy To"}));
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Make Executable", "Copy Git Link", "Copy To"}));
     }
 
     void pluginDetailsAreAskedForOnceAndKept()
@@ -5345,6 +6282,7 @@ private slots:
             const Plugins::Run r = runBundled(plugin, plugin.poll, bin, home.path());
             return r.ok() ? Plugins::parseOutput(r.out) : std::nullopt;
         };
+        auto printed = [&](const QString &says) { return run(says, true)->printed; };
         // Nothing to say without a Dropbox folder.
         auto output = run("Up to date", true);
         QVERIFY(output && output->places.isEmpty());
@@ -5357,18 +6295,19 @@ private slots:
         QCOMPARE(output->places[0].icon, QString("dropbox.svg"));
         QVERIFY(output->places[0].status.isUndefined());
         QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
-        // Up to date says nothing; links work while Dropbox runs.
-        output = run("Up to date", true);
-        QVERIFY(output->places[0].status.isUndefined());
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
-        output = run("Syncing 3 files", true);
-        QCOMPARE(output->places[0].status.toString(), QString("syncing"));
-        QCOMPARE(output->places[0].tone, QString("warning"));
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{"link"}));
-        output = run("Dropbox isn't running!", true);
-        QCOMPARE(output->places[0].status.toString(), QString("stopped"));
-        QCOMPARE(output->places[0].tone, QString("error"));
-        QCOMPARE(output->actions, std::optional<QStringList>(QStringList{}));
+        // The row never says Dropbox's state; links work while it runs.
+        for (const QString &says : QStringList{"Up to date", "Syncing 3 files", "Dropbox isn't running!"}) {
+            output = run(says, true);
+            QVERIFY(output->places[0].status.isUndefined());
+            QCOMPARE(output->actions,
+                     std::optional<QStringList>(says.contains("running") ? QStringList{} : QStringList{"link"}));
+        }
+        // But the poll still prints something new when the state changes, so
+        // a file's "syncing" in its details goes once the sync is done, and
+        // only then, not with every file Dropbox counts down.
+        QVERIFY(printed("Syncing 3 files") != printed("Up to date"));
+        QVERIFY(printed("Up to date") != printed("Dropbox isn't running!"));
+        QCOMPARE(printed("Syncing 3 files"), printed("Syncing 2 files"));
     }
 
     void dropboxPluginCopiesLinks()
@@ -6347,6 +7286,8 @@ private slots:
         QVERIFY(picture.save(file));
 
         Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QVERIFY(thumbnails.cached(file).isNull());
+        QVERIFY(!QFile::exists(dir.filePath("cache")));
         const QImage thumb = thumbnails.load(file, "image/png", 256);
         QCOMPARE(thumb.size(), QSize(256, 128));
 
@@ -6362,6 +7303,7 @@ private slots:
         QImage marked = stored;
         marked.fill(Qt::blue);
         QVERIFY(marked.save(cached));
+        QCOMPARE(thumbnails.cached(file).pixelColor(0, 0), QColor(Qt::blue));
         QCOMPARE(thumbnails.load(file, "image/png", 256).pixelColor(0, 0), QColor(Qt::blue));
         QCOMPARE(Thumbnails::bucketFor(128), QString("normal"));
         QCOMPARE(Thumbnails::bucketFor(512), QString("x-large"));
@@ -6458,6 +7400,9 @@ private slots:
         QTemporaryDir dir;
         write(dir.filePath("demo.thumbnailer"),
               "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o %s\nMimeType=video/mp4;video/webm;\n");
+        // One left behind by a program since removed is no thumbnailer.
+        write(dir.filePath("gone.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=" + dir.filePath("no-such-program").toUtf8() + " %i %o\nMimeType=video/ogg;\n");
         Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
         QVERIFY(thumbnails.thumbnailerFor("video/webm").startsWith("/bin/sh"));
         QVERIFY(thumbnails.thumbnailerFor("video/ogg").isEmpty());
@@ -6466,6 +7411,48 @@ private slots:
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+    }
+
+    void thumbnailsStopAThumbnailerWithWhatItStarted()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and never ends.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, {}, 1000);
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        // Past its time the helper is stopped as well.
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(ended(helper.toInt()));
+        // A file its thumbnailer hangs on is held back like any other it fails on.
+        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(clip))));
+    }
+
+    void thumbnailsHandAThumbnailerANameThatHoldsACode()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer copies its input out and notes the third argument it was given beside itself.
+        const QString script = dir.filePath("copy.sh");
+        write(script, "cp \"$1\" \"$2\" && printf %s \"$3\" > \"$0.said\"\n");
+        write(dir.filePath("demo.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8()
+              + "\" %i %o \"--size=%s,%s 100%% %u\"\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A name with every code in it is still one file to the thumbnailer, by path and by URI.
+        const QString clip = dir.filePath("50%off %sale %up %in 100%%.mp4");
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(clip, "PNG"));
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 128).size(), QSize(10, 20));
+        QFile said(script + ".said");
+        QVERIFY(said.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(said.readAll()),
+                 "--size=128,128 100% " + QUrl::fromLocalFile(clip).toString(QUrl::FullyEncoded));
     }
 
     void thumbnailsRememberOnlyWhatFailed()
@@ -6497,12 +7484,13 @@ private slots:
         write(dir.filePath("never.broken"), "x");
         QVERIFY(withBroken.load(dir.filePath("never.broken"), "image/x-broken", 128).isNull());
         const QImage marker(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("never.broken"))));
-        QCOMPARE(marker.text("X-Folio::Round"), QString("2"));
-        // An old marker, without its round, for a picture that can be made.
+        QCOMPARE(marker.text("X-Folio::Round"), QString("3"));
+        // A marker from round 2, for a picture that can be made.
         const QFileInfo picture(dir.filePath("frame.png"));
         QImage old(1, 1, QImage::Format_ARGB32);
         old.setText("Thumb::MTime", QString::number(picture.lastModified().toSecsSinceEpoch()));
         old.setText("X-Folio::MTime", QString::number(picture.lastModified().toMSecsSinceEpoch()));
+        old.setText("X-Folio::Round", "2");
         QVERIFY(old.save(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(picture.filePath()))));
         QVERIFY(!withBroken.load(picture.filePath(), "image/png", 128).isNull());
     }
@@ -6590,6 +7578,68 @@ private slots:
         QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
     }
 
+    void thumbnailsFollowWhatAFileHoldsWhenItsNameSaysNothing()
+    {
+        // A picture or a PDF whose name gives no type is thumbnailed as what it holds, and a name that gives one is believed.
+        QTemporaryDir dir;
+        QImage picture(64, 32, QImage::Format_RGB32);
+        picture.fill(Qt::green);
+        const QString bare = dir.filePath("holiday"), odd = dir.filePath("holiday.oxQCuj"), zip = dir.filePath("holiday.zip");
+        for (const QString &copy : {bare, odd, zip})
+            QVERIFY(picture.save(copy, "PNG"));
+        QImage frame(40, 20, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        write(dir.filePath("pdf.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("frame.png").toUtf8() + "\" %o\nMimeType=application/pdf;\n");
+        write(dir.filePath("report.download"), "%PDF-1.4\n1 0 obj\n");
+        write(dir.filePath("blob"), QByteArray("\0\1\2\3", 4));
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString unnamed = "application/octet-stream";
+
+        // Qt's own reader draws the picture at the size asked for; the thumbnailer's frame comes as it was made.
+        QCOMPARE(thumbnails.load(bare, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(odd, unnamed, 128).size(), QSize(128, 64));
+        QCOMPARE(thumbnails.load(dir.filePath("report.download"), unnamed, 128).size(), QSize(40, 20));
+        // The name said a type: the file isn't read to doubt it.
+        QVERIFY(thumbnails.load(zip, "application/zip", 128).isNull());
+        // Nothing can draw these bytes, so nothing failed.
+        QVERIFY(thumbnails.load(dir.filePath("blob"), unnamed, 128).isNull());
+        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("blob")))));
+        // A pipe is told by its kind and never opened: with nobody writing, the open would wait for good.
+        const QString pipe = dir.filePath("events");
+        QCOMPARE(mkfifo(QFile::encodeName(pipe).constData(), 0600), 0);
+        QCOMPARE(FolderModel::typeByContent(pipe, unnamed), QString("inode/fifo"));
+    }
+
+    void thumbnailsMatchATypeNamedByItsAlias()
+    {
+        QTemporaryDir dir;
+        QImage page(64, 96, QImage::Format_RGB32);
+        page.fill(Qt::green);
+        QVERIFY(page.save(dir.filePath("page.png")));
+        QVERIFY(QDir(dir.path()).mkdir("system") && QDir(dir.path()).mkdir("user"));
+        // Like evince, the user's .thumbnailer file names comic books and icons only by an alias.
+        write(dir.filePath("user/comics.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("page.png").toUtf8() + "\" %o\n"
+              "MimeType=application/x-cbz;image/x-icon;application/x-nothing-here;application/x-cbr;\n");
+        write(dir.filePath("user/rar.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/true %i\nMimeType=application/vnd.comicbook-rar;\n");
+        write(dir.filePath("system/icons.thumbnailer"), "[Thumbnailer Entry]\nExec=/bin/false %i\nMimeType=image/vnd.microsoft.icon;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("system"), dir.filePath("user")});
+
+        write(dir.filePath("issue.cbz"), "not really a zip");
+        const QImage thumb = thumbnails.load(dir.filePath("issue.cbz"), "application/vnd.comicbook+zip", 128);
+        QCOMPARE(thumb.pixelColor(0, 0), QColor(Qt::green));
+        // The later directory still wins when its file names the type by an alias.
+        QVERIFY(thumbnails.thumbnailerFor("image/vnd.microsoft.icon").startsWith("/bin/cp"));
+        // Within one directory the file that names the type itself wins, whichever file is read first.
+        QCOMPARE(QMimeDatabase().mimeTypeForName("application/x-cbr").name(), QString("application/vnd.comicbook-rar"));
+        QVERIFY(thumbnails.thumbnailerFor("application/vnd.comicbook-rar").startsWith("/bin/true"));
+        // A type the MIME database doesn't know is matched by the name the file gives, and by no other.
+        QVERIFY(thumbnails.thumbnailerFor("application/x-nothing-here").startsWith("/bin/cp"));
+        QVERIFY(thumbnails.thumbnailerFor("").isEmpty());
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));
@@ -6601,7 +7651,17 @@ private slots:
         QCOMPARE(Previewer::viewerFor("text/markdown", false), QString("markdown"));
         QCOMPARE(Previewer::viewerFor("text/x-c++src", false), QString("text"));
         QCOMPARE(Previewer::viewerFor("application/x-shellscript", false), QString("text"));
-        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-xz-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-lzma-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-lzip-compressed-tar", false), QString("archive"));
+        QCOMPARE(Previewer::viewerFor("application/x-iso9660-image", false), QString("archive"));
+        // bsdtar can't list a lone compressed file, so it stays as 0.2.0 showed it.
+        QCOMPARE(Previewer::viewerFor("application/gzip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/zstd", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-xz", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("application/x-sharedlib", false), QString("other"));
         QCOMPARE(Previewer::viewerFor("inode/directory", true), QString("folder"));
     }
 
@@ -6646,6 +7706,129 @@ private slots:
         window->setProperty("helpVisible", true);
         QCoreApplication::processEvents();
         QVERIFY2(problems.isEmpty(), qPrintable(problems.join("\n")));
+    }
+
+    void previewClosesWhenItsFileIsOpened()
+    {
+        // Enter and the Open button hand the file to its app, and the preview closes: it stays only when nothing opened.
+        QTemporaryDir home;
+        write(home.filePath("notes.txt"), "hello\n");
+        QStringList asked;
+        QString problem;
+        Previewer previewer([&](const QString &path) { asked << path; return problem; });
+        QSignalSpy opened(&previewer, &Previewer::opened);
+
+        // With nothing shown yet there is nothing to open.
+        previewer.open();
+        QCOMPARE(asked, QStringList());
+        QCOMPARE(opened.count(), 0);
+
+        previewer.start(home.filePath("notes.txt"), false, "name");
+        QTRY_COMPARE(previewer.viewer(), QString("text"));
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        QSignalSpy quit(&engine, &QQmlEngine::quit);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine, QUrl::fromLocalFile(sourceFolder() + "/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+
+        // An app that could not be started leaves the preview where it was.
+        problem = "No app is set up to open notes.txt.";
+        QTest::ignoreMessage(QtWarningMsg, "No app is set up to open notes.txt.");
+        previewer.open();
+        QCOMPARE(asked, QStringList{home.filePath("notes.txt")});
+        QCOMPARE(opened.count(), 0);
+        QCOMPARE(quit.count(), 0);
+
+        problem.clear();
+        previewer.open();
+        QCOMPARE(asked.size(), 2);
+        QCOMPARE(opened.count(), 1);
+        QCOMPARE(quit.count(), 1);
+    }
+
+    void previewerNamesAFileByWhatItHoldsWhenItsNameSaysNothing()
+    {
+        // A PDF or a text whose name gives no type is shown as what it holds, read off the UI thread like a text's opening.
+        QTemporaryDir dir;
+        const QString pdf = dir.filePath("report.download"), notes = dir.filePath("notes"), blob = dir.filePath("blob");
+        const QString claimed = dir.filePath("report.zip"), download = dir.filePath("paper.oxQCuj");
+        write(pdf, "%PDF-1.4\n1 0 obj\n");
+        write(notes, "hello\nworld\n");
+        write(download, "");
+        write(blob, QByteArray("\0\1\2\3", 4));
+        write(claimed, "%PDF-1.4\n1 0 obj\n");
+        Previewer previewer;
+        previewer.start(pdf, false, "name");
+        QCOMPARE(previewer.viewer(), QString("other"));
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/pdf"));
+        QCOMPARE(previewer.item().value("kind").toString(), QString("pdf"));
+        QCOMPARE(previewer.type(), QMimeDatabase().mimeTypeForName("application/pdf").comment());
+
+        // What it holds is text: its opening is read too.
+        previewer.show(notes);
+        QTRY_COMPARE(previewer.text(), QString("hello\nworld\n"));
+        QCOMPARE(previewer.viewer(), QString("text"));
+
+        // A file shown while still empty and filled since is read again at its next showing.
+        previewer.show(download);
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QCOMPARE(previewer.viewer(), QString("other"));
+        previewer.show(notes);
+        write(download, "%PDF-1.4\n1 0 obj\n");
+        previewer.show(download);
+        QTRY_COMPARE(previewer.viewer(), QString("pdf"));
+
+        // Bytes nothing knows stay a plain file, and a name that said a type is believed.
+        for (const QString &plain : {blob, claimed}) {
+            previewer.show(plain);
+            QThreadPool::globalInstance()->waitForDone();
+            QCoreApplication::processEvents();
+            QCOMPARE(previewer.viewer(), QString(plain == blob ? "other" : "archive"));
+        }
+        QCOMPARE(previewer.item().value("mime").toString(), QString("application/zip"));
+    }
+
+    // A file with no preview is named, and its extension shown, as written,
+    // however much they look like markup.
+    void previewWindowDrawsNamesAsPlainText()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("x.<b>ty"), QByteArray("abc\0def", 7));
+        Theme theme(dir.filePath("theme"));
+        Translator translator(dir.filePath("language"), dir.path());
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        Previewer previewer;
+        previewer.start(dir.filePath("x.<b>ty"), false, "name");
+        QQmlApplicationEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QTRY_COMPARE(previewer.viewer(), QString("other"));
+        const auto formatOf = [&](const QString &text) {
+            int format = -1;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->property("text").toString() == text && item->property("textFormat").isValid())
+                    format = item->property("textFormat").toInt();
+                for (auto *child : item->childItems())
+                    walk(child);
+            };
+            walk(window->contentItem());
+            return format;
+        };
+        QTRY_COMPARE(formatOf("x.<b>ty"), int(Qt::PlainText));
+        QTRY_COMPARE(formatOf("<B>TY"), int(Qt::PlainText));
     }
 
     void previewerShowsOnlyWhatLaysOutQuickly()
@@ -6713,6 +7896,86 @@ private slots:
         for (int i = 0; i < 400; ++i)
             longFence += "| a | b | c |\n";
         QVERIFY(Previewer::markdownOpening(longFence, 600).count('|') <= 600 + 4);
+    }
+
+    void previewSharesAnInFlightDecodeAcrossReloads()
+    {
+        // A window learning its final display scale makes the picture ask
+        // for its pixels again while the first decode is still running.
+        // That reload must join the decode in flight, not start a second.
+        struct GatedImages : QQuickImageProvider {
+            GatedImages() : QQuickImageProvider(QQuickImageProvider::Image) {}
+            std::atomic<int> reads{0};
+            QSemaphore release;
+            QImage requestImage(const QString &, QSize *size, const QSize &) override
+            {
+                if (reads.fetch_add(1) == 0)
+                    release.acquire();
+                QImage image(200, 100, QImage::Format_RGB32);
+                image.fill(Qt::darkCyan);
+                *size = image.size();
+                return image;
+            }
+        };
+        QTemporaryDir home;
+        const QString path = home.filePath("picture.png");
+        QImage picture(200, 100, QImage::Format_RGB32);
+        picture.fill(Qt::red);
+        QVERIFY(picture.save(path));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QCOMPARE(thumbnails.load(path, "image/png", 256).size(), QSize(256, 128));
+        Theme theme(home.filePath("theme"));
+        QQmlEngine engine;
+        auto *images = new GatedImages;
+        engine.addImageProvider("gated", images);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        const auto unblock = qScopeGuard([&] { images->release.release(); });
+        QQmlComponent stand(&engine);
+        stand.setData("import QtQml\n"
+                      "QtObject {\n"
+                      "    signal changed\n"
+                      "    signal opened\n"
+                      "    property var item\n"
+                      "    property string viewer: 'image'\n"
+                      "    property string url: 'image://gated/picture'\n"
+                      "    property int count: 1\n"
+                      "    property int index: 0\n"
+                      "    property string type: 'PNG'\n"
+                      "    property string text\n"
+                      "}\n",
+                      QUrl());
+        std::unique_ptr<QObject> preview(stand.create());
+        QVERIFY2(preview, qPrintable(stand.errorString()));
+        QVERIFY(preview->setProperty("item", QVariantMap{
+            {"name", "Picture"}, {"path", path}, {"mime", "image/png"},
+            {"size", QFileInfo(path).size()}, {"modified", QFileInfo(path).lastModified()}
+        }));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("previewer", preview.get());
+        QQmlComponent component(&engine, QUrl("qrc:/PreviewWindow.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *view = root->property("view").value<QQuickItem *>();
+        QVERIFY(view);
+        auto *image = view->property("source").value<QObject *>();
+        auto *thumbnail = view->findChild<QQuickItem *>("previewThumbnail");
+        QVERIFY(image);
+        QVERIFY(thumbnail);
+        QTRY_COMPARE(images->reads.load(), 1);
+        QTRY_VERIFY(thumbnail->isVisible());
+        QCOMPARE(view->property("natural").toSize(), picture.size());
+        QCOMPARE(thumbnail->size(), QSizeF(picture.size()));
+        // Turning the cache off and on drops and re-requests the image as a
+        // scale change does, while leaving its source alone.
+        QVERIFY(image->setProperty("cache", false));
+        QVERIFY(image->setProperty("cache", true));
+        images->release.release();
+        QTRY_COMPARE(image->property("status").toInt(), 1);
+        QCOMPARE(images->reads.load(), 1);
+        QVERIFY(!thumbnail->isVisible());
+        QVERIFY(thumbnail->property("source").toUrl().isEmpty());
+        QCOMPARE(view->property("natural").toSize(), picture.size());
+        QVERIFY(!QFile::exists(home.filePath("cache/normal/" + Thumbnails::cacheKey(path))));
     }
 
     void previewerStepsThroughTheFolder()
@@ -7019,6 +8282,84 @@ private slots:
 
     // Renamed inside a folder opened in the list's tree, an item stays
     // selected under its new name, wherever that sorts it.
+    // Ctrl+= and Ctrl+-, Ctrl+scroll and Ctrl+0 size the list's rows as
+    // they do the grid's tiles: one size step for the pane, both views.
+    void listRowsFollowTheSizeStep()
+    {
+        QTemporaryDir home, plugins;
+        QDir(home.path()).mkpath("files");
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(home.filePath(QString("files/") + name), "x");
+        Backend backend(home.path());
+        Theme theme(home.filePath("theme"));
+        Places places(home.path());
+        FileOps fileOps;
+        Plugins bundled("en", {plugins.path()}, home.filePath("folio.conf"));
+        Translator translator(home.filePath("language"), home.path());
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &bundled);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("places", &places);
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import QtQuick.Controls
+            ApplicationWindow {
+                width: 900; height: 620; visible: true
+                property string viewMode: "list"
+                property real zoom: 1
+                property bool split: false
+                property bool helpVisible: false
+                property var activePane: null
+                function raise() {}
+                function requestActivate() {}
+                FolderPane { id: pane; anchors.fill: parent; focus: true }
+                Component.onCompleted: activePane = pane
+                readonly property var paneItem: pane
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ListSizeTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *pane = root->property("paneItem").value<QObject *>();
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->count(), 3);
+        QVERIFY(QMetaObject::invokeMethod(pane, "focusView"));
+        QTest::keyClick(window, Qt::Key_Down);
+        QQuickItem *list = nullptr;
+        for (auto *item : root->findChildren<QQuickItem *>())
+            if (item->metaObject()->indexOfProperty("rowHeight") >= 0)
+                list = item;
+        QVERIFY(list);
+        const auto rowHeight = [&] {
+            auto *row = list->property("currentItem").value<QQuickItem *>();
+            return row ? row->height() : 0.0;
+        };
+        QTRY_COMPARE(rowHeight(), 32.0);
+
+        QTest::keyClick(window, Qt::Key_Equal, Qt::ControlModifier);
+        QTRY_COMPARE(rowHeight(), 40.0);
+        const QPointF middle(list->width() / 2, list->height() / 2);
+        QWheelEvent up(list->mapToScene(middle), list->mapToScene(middle), QPoint(), QPoint(0, 240), Qt::NoButton,
+                       Qt::ControlModifier, Qt::NoScrollPhase, false);
+        QGuiApplication::sendEvent(window, &up);
+        QTRY_COMPARE(rowHeight(), 64.0);
+        QCOMPARE(root->property("zoom").toReal(), 2.0);
+        // The biggest step is the last.
+        QTest::keyClick(window, Qt::Key_Equal, Qt::ControlModifier);
+        QCOMPARE(root->property("zoom").toReal(), 2.0);
+        QTest::keyClick(window, Qt::Key_0, Qt::ControlModifier);
+        QTRY_COMPARE(rowHeight(), 32.0);
+        QTest::keyClick(window, Qt::Key_Minus, Qt::ControlModifier);
+        QTRY_COMPARE(rowHeight(), 24.0);
+    }
+
     void listKeepsARenamedNestedItemSelected()
     {
         QTemporaryDir home, plugins;
@@ -7082,6 +8423,186 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(cursor(), home.filePath("files/alpha/z.txt"), 3000);
         QCOMPARE(folder->get(folder->indexOfPath(home.filePath("files/alpha/z.txt"))).value("selected").toBool(), true);
         QCOMPARE(folder->selectedCount(), 1);
+
+        // The preview stepping to a file in the opened folder moves the
+        // cursor to its row, so ↑ and ↓ step from there; one outside the
+        // folder shown leaves it be.
+        backend.previewSaid(home.filePath("files/alpha/b.txt"));
+        QTRY_COMPARE(cursor(), home.filePath("files/alpha/b.txt"));
+        backend.previewSaid(home.filePath("elsewhere/x.txt"));
+        QCOMPARE(cursor(), home.filePath("files/alpha/b.txt"));
+    }
+
+    // Right-click selects the item under the pointer in a scrolled view too,
+    // not one as far further on as the view is scrolled (#129): the menu
+    // acted on another file.
+    void rightClickPicksTheItemUnderItWhenScrolled_data()
+    {
+        QTest::addColumn<QString>("viewType");
+        QTest::newRow("grid") << QString("FolderGrid");
+        QTest::newRow("list") << QString("FolderList");
+        QTest::newRow("columns") << QString("FolderColumns");
+    }
+
+    void rightClickPicksTheItemUnderItWhenScrolled()
+    {
+        QFETCH(QString, viewType);
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkdir("files"));
+        for (int i = 0; i < 80; ++i)
+            write(home.filePath(QString("files/file-%1.txt").arg(i, 2, 10, QLatin1Char('0'))), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("files"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 80);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(QString(R"(
+            import QtQuick
+            Window {
+                width: 600; height: 400; visible: true
+                property alias cursor: folderView.currentIndex
+                property string menuFor: ""
+                %1 { id: folderView; anchors.fill: parent; Component.onCompleted: focusView()
+                     onContextMenu: (item, folder, at) => menuFor = item ? item.name : "" }
+                // The item drawn at a point of the window.
+                function nameAt(x, y) {
+                    const views = []
+                    const walk = (item) => {
+                        if (item.model === backend.folder && item.indexAt !== undefined) views.push(item)
+                        for (const child of item.children) walk(child)
+                    }
+                    walk(folderView)
+                    const view = views[0]
+                    const p = view.mapFromItem(null, x, y)
+                    const index = view.indexAt(p.x + view.contentX, p.y + view.contentY)
+                    return index >= 0 ? backend.folder.get(index).name : ""
+                }
+            }
+        )").arg(viewType).toUtf8(), QUrl::fromLocalFile(sourceFolder() + "/RightClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        // Scrolled well down, by putting the cursor far on.
+        root->setProperty("cursor", 60);
+        // In the columns, in the column of the folder shown, after its parent's.
+        const QPoint at(viewType == "FolderColumns" ? 390 : 200, window->height() / 2);
+        QVariant expected;
+        // Once the view has scrolled to the cursor and drawn what's there.
+        QTRY_VERIFY((QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, expected), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y())),
+                     !expected.toString().isEmpty()));
+        QTest::mouseClick(window, Qt::RightButton, {}, at);
+        QTRY_COMPARE(root->property("menuFor").toString(), expected.toString());
+    }
+
+    // The columns' own right-click handlers, for a folder on the way here
+    // and for what's inside the selected folder, pick what's under the
+    // pointer in a scrolled column too, and say the folder it's in.
+    void columnsRightClickPicksTheItemUnderItWhenScrolled()
+    {
+        QTemporaryDir home;
+        for (int i = 0; i < 60; ++i)
+            QDir(home.path()).mkpath(QString("many/d%1").arg(i, 2, 10, QLatin1Char('0')));
+        QDir(home.path()).mkpath("many/d50/inner");
+        for (int i = 0; i < 60; ++i)
+            write(home.filePath(QString("many/d50/inner/file-%1.txt").arg(i, 2, 10, QLatin1Char('0'))), "x");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("many/d50"));
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Translator translator(home.filePath("language"), home.path());
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        engine.rootContext()->setContextProperty("plugins", QVariantMap{{"views", QVariantMap{}}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 1000; height: 400; visible: true
+                property alias cursor: folderView.currentIndex
+                property string menuFor: ""
+                FolderColumns { id: folderView; anchors.fill: parent; Component.onCompleted: focusView()
+                     onContextMenu: (item, folder, at) => menuFor = (item ? item.name : "") + " in " + folder }
+                // The columns, by the folder each shows.
+                function views() {
+                    const found = []
+                    const walk = (item) => {
+                        if (item.indexAt !== undefined && item.model && item.model.path !== undefined) found.push(item)
+                        for (const child of item.children) walk(child)
+                    }
+                    walk(folderView)
+                    return found
+                }
+                // Whether the columns of these folders have read their rows.
+                function loaded(suffixes) {
+                    return suffixes.every(suffix => views().some(view =>
+                        view.model.path.endsWith(suffix) && !view.model.loading && view.count > 0))
+                }
+                function scroll(suffix, y) {
+                    for (const view of views())
+                        if (view.model.path.endsWith(suffix)) view.contentY = y
+                }
+                // What's drawn at a point of the window, and in which folder.
+                function nameAt(x, y) {
+                    for (const view of views()) {
+                        const p = view.mapFromItem(null, x, y)
+                        if (p.x < 0 || p.y < 0 || p.x >= view.width || p.y >= view.height || !view.visible)
+                            continue
+                        const index = view.indexAt(p.x + view.contentX, p.y + view.contentY)
+                        return index >= 0 ? view.model.get(index).name + " in " + view.model.path : ""
+                    }
+                    return ""
+                }
+            }
+        )", QUrl::fromLocalFile(sourceFolder() + "/ColumnsRightClickTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        // Inner selected: many's column, scrolled to d50, then d50's, then
+        // inner's, scrolled down too.
+        root->setProperty("cursor", 0);
+        // Each column reads its folder on its own: both are waited for.
+        const auto loaded = [&] {
+            QVariant done;
+            QMetaObject::invokeMethod(root.get(), "loaded", Q_RETURN_ARG(QVariant, done),
+                                      Q_ARG(QVariant, QStringList({"/many", "/inner"})));
+            return done.toBool();
+        };
+        QTRY_VERIFY(loaded());
+        QMetaObject::invokeMethod(root.get(), "scroll", Q_ARG(QVariant, "/inner"), Q_ARG(QVariant, 600));
+        const auto nameAt = [&](const QPoint &at) {
+            QVariant name;
+            QMetaObject::invokeMethod(root.get(), "nameAt", Q_RETURN_ARG(QVariant, name), Q_ARG(QVariant, at.x()), Q_ARG(QVariant, at.y()));
+            return name.toString();
+        };
+        // A folder on the way here (many, column 2 after home's) and what's
+        // inside the selected folder (the last column).
+        for (const QPoint at : {QPoint(390, 200), QPoint(910, 200)}) {
+            QTRY_VERIFY(!nameAt(at).isEmpty());
+            const QString expected = nameAt(at);
+            root->setProperty("menuFor", QString());
+            QTest::mouseClick(window, Qt::RightButton, {}, at);
+            QTRY_COMPARE(root->property("menuFor").toString(), expected);
+        }
     }
 
     void gridBandHitsTheTilesBothWays()
@@ -7118,7 +8639,7 @@ private slots:
                           "        const off = []\n"
                           "        for (let i = 0; i < grid.count; ++i) {\n"
                           "            if (!grid.itemAtIndex(i)) return 'no tile ' + i\n"
-                          "            const at = grid.itemAtIndex(i).mapToItem(band, 20, 12)\n"
+                          "            const at = grid.itemAtIndex(i).mapToItem(band, 14, 12)\n"
                           "            if (band.rectOf(i).x !== at.x || band.rectOf(i).y !== at.y)\n"
                           "                off.push(i + ': ' + band.rectOf(i).x + ',' + band.rectOf(i).y + ' not ' + at.x + ',' + at.y)\n"
                           "        }\n"
@@ -7136,6 +8657,52 @@ private slots:
             };
             QTRY_COMPARE(misplaced(), QString("7"));
         }
+    }
+
+    void gridBandStartsBetweenTiles()
+    {
+        // A band can start in the padding between two tiles, not only past
+        // the last one: in a full folder that's all the empty space there is.
+        QTemporaryDir home;
+        for (const char *name : {"a", "b", "c", "d", "e", "f", "g"})
+            write(home.filePath(name), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 7);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        // Five columns of 200 by 192, each tile drawn at 14..186 across.
+        component.setData("import QtQuick\n"
+                          "Window { width: 1000; height: 600; visible: true\n"
+                          "    FolderGrid { anchors.fill: parent } }\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/GridBandStartTest.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        // From between a and b, over b, c and g below b.
+        QTest::mousePress(window, Qt::LeftButton, {}, QPoint(200, 100));
+        for (int step = 1; step <= 10; ++step)
+            QTest::mouseMove(window, QPoint(200 + step * 30, 100 + step * 15));
+        QTest::mouseRelease(window, Qt::LeftButton, {}, QPoint(500, 250));
+        QStringList names;
+        for (const QString &path : backend.folder()->selectedPaths())
+            names << QFileInfo(path).fileName();
+        names.sort();
+        QCOMPARE(names, QStringList({"b", "c", "g"}));
+
+        // A click on a tile's picture still picks that tile.
+        QTest::mouseClick(window, Qt::LeftButton, {}, QPoint(100, 60));
+        QTRY_COMPARE(backend.folder()->selectedPaths(), QStringList({home.filePath("a")}));
     }
 
     void folderViewsKeepNoCacheBuffer_data()
@@ -7192,6 +8759,288 @@ private slots:
         QCOMPARE(buffers(), QVariantList(buffers().size(), 0));
     }
 
+    void previewerStepsByRowOnItsOwn()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("a.png"), "a");
+        write(dir.filePath("b.png"), "b");
+        write(dir.filePath("c.png"), "c");
+
+        // Without a Folio window to ask for the row above or below, ↑ and ↓
+        // fall back to the previous and next file.
+        Previewer previewer;
+        previewer.start(dir.filePath("b.png"), false, "name");
+        QTRY_COMPARE(previewer.count(), 3);
+        QCOMPARE(previewer.index(), 1);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(1);
+        QCOMPARE(previewer.index(), 2);
+        previewer.stepRow(-1);
+        previewer.stepRow(-1);
+        QCOMPARE(previewer.index(), 0);
+    }
+
+    void previewerLetsArrowsGoUntilFolioHasStepped()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"a.png", "b.png", "c.png", "d.png"})
+            write(dir.filePath(name), "x");
+
+        Previewer previewer;
+        previewer.connectToFolio(false);
+        QSignalSpy reported(&previewer, &Previewer::reported);
+        previewer.start(dir.filePath("a.png"), false, "name");
+        QTRY_COMPARE(previewer.count(), 4);
+
+        // ↓ then → and ↓ before Folio answers: they're let go, rather than
+        // taken from a.png (undoing the move) or replayed past c.png before
+        // it's been looked at.
+        previewer.stepRow(1);
+        previewer.next();
+        previewer.stepRow(1);
+        QCOMPARE(reported.count(), 1);
+        QCOMPARE(reported.at(0).at(0).toString(), QString("step 1"));
+        previewer.receive(dir.filePath("c.png"));
+        previewer.receive("stepped");
+        QCOMPARE(previewer.index(), 2);
+        QCOMPARE(reported.count(), 1);
+        // Once it has, the arrows are taken from where Folio moved to.
+        previewer.next();
+        QCOMPARE(previewer.index(), 3);
+        QCOMPARE(reported.count(), 2);
+        QCOMPARE(reported.at(1).at(0).toString(), QFileInfo(dir.filePath("d.png")).absoluteFilePath());
+
+        // At the last row Folio doesn't move, and only says it has stepped.
+        previewer.stepRow(1);
+        previewer.receive("stepped");
+        QCOMPARE(previewer.index(), 3);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 2);
+
+        // A reply that never comes stills the arrows for a moment only.
+        previewer.stepRow(-1);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 2);
+        QTest::qWait(1100);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 1);
+    }
+
+    void previewerSaysWhileItReadsText()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("long.txt"), QByteArray(4096, 'x'));
+        write(dir.filePath("b.png"), "b");
+
+        Previewer previewer;
+        previewer.start(dir.filePath("long.txt"), false, "name");
+        QVERIFY(previewer.readingText());
+        QTRY_VERIFY(!previewer.readingText());
+        QCOMPARE(previewer.text().size(), 4096);
+        previewer.show(dir.filePath("b.png"));
+        QVERIFY(!previewer.readingText());
+
+        // A file its name gives no type might be a long text too, until
+        // what it holds has been read.
+        write(dir.filePath("NOTES"), QByteArray(4096, 'x'));
+        previewer.show(dir.filePath("NOTES"));
+        QVERIFY(previewer.readingText());
+        QTRY_VERIFY(!previewer.readingText());
+        QCOMPARE(previewer.viewer(), QString("text"));
+    }
+
+    void archivesListTheirNames()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("files/sub dir");
+        write(dir.filePath("files/sub dir/a b.txt"), "x");
+        // bsdtar escapes a backslash in what it lists (a zip would take it for a folder).
+        write(dir.filePath("files/café \\ two.txt"), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("project.tar"), "-C", dir.filePath("files"), "sub dir", "café \\ two.txt"}), 0);
+        const QString names = "sub dir/\nsub dir/a b.txt\ncafé \\ two.txt";
+
+        Backend backend(dir.path());
+        backend.describe({{"path", dir.filePath("project.tar")}, {"kind", "archive"}, {"mime", "application/x-tar"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), names);
+        Previewer previewer;
+        previewer.start(dir.filePath("project.tar"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("archive"));
+        QTRY_COMPARE(previewer.text(), names);
+
+        // Past 500 names the rest aren't read.
+        QDir(dir.path()).mkpath("many");
+        for (int i = 0; i < 600; ++i)
+            write(dir.filePath(QString("many/%1.txt").arg(i)), "x");
+        QCOMPARE(QProcess::execute("bsdtar", {"-cf", dir.filePath("many.tar"), "-C", dir.filePath("many"), "."}), 0);
+        const QStringList shown = Previewer::archiveNames(dir.filePath("many.tar")).split('\n');
+        QCOMPARE(shown.size(), 501);
+        QCOMPARE(shown.last(), QString("…"));
+    }
+
+    void archivesThatCantBeListedSaySo()
+    {
+        // bsdtar reads a text file as a list of names, then fails.
+        QTemporaryDir dir;
+        write(dir.filePath("notes.zip"), "hello\n");
+        const QString sentence = "Couldn't list this archive.";
+
+        Backend backend(dir.path());
+        backend.describe({{"path", dir.filePath("notes.zip")}, {"kind", "archive"}, {"mime", "application/zip"}});
+        QTRY_COMPARE(backend.details().value("text").toString(), sentence);
+        Previewer previewer;
+        previewer.start(dir.filePath("notes.zip"), false, "name");
+        QTRY_COMPARE(previewer.text(), sentence);
+    }
+
+    void previewStepsPastAOnePagePdf()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"one.pdf", "two.pdf"}) {
+            QPdfWriter pdf(dir.filePath(name));
+            QPainter painter(&pdf);
+            if (QByteArray(name) == "two.pdf")
+                pdf.newPage();
+        }
+        write(dir.filePath("z.png"), "z");
+
+        Previewer previewer;
+        previewer.connectToFolio(false);
+        QSignalSpy reported(&previewer, &Previewer::reported);
+        previewer.start(dir.filePath("two.pdf"), false, "name");
+        Theme theme(dir.filePath("theme"));
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.rootContext()->setContextProperty("previewer", &previewer);
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent pdf(&engine);
+        pdf.setData("import QtQuick.Pdf\nPdfDocument {}\n", QUrl());
+        if (pdf.isError())
+            QSKIP("Qt PDF isn't installed");
+        QQmlComponent component(&engine, QUrl("qrc:/PreviewWindow.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto pages = [&]() -> int {
+            auto *view = window->property("view").value<QObject *>();
+            for (QObject *child : view ? view->children() : QObjectList())
+                if (child->property("pageCount").isValid())
+                    return child->property("pageCount").toInt();
+            return -1;
+        };
+        const auto steps = [&] {
+            int n = 0;
+            for (const QList<QVariant> &line : reported)
+                n += line.at(0).toString().startsWith("step ");
+            return n;
+        };
+        // Pages to turn take ↑ and ↓; a single page lets them move on.
+        QTRY_COMPARE(pages(), 2);
+        QMetaObject::invokeMethod(window.get(), "upDown", Q_ARG(QVariant, 1));
+        QCOMPARE(steps(), 0);
+        previewer.show(dir.filePath("one.pdf"));
+        QTRY_COMPARE(pages(), 1);
+        QMetaObject::invokeMethod(window.get(), "upDown", Q_ARG(QVariant, 1));
+        QCOMPARE(steps(), 1);
+    }
+
+    void cutItemsFadeTheirPictures()
+    {
+        // A cut folder's card and a cut file's picture fade, in the grid and the list, until pasted.
+        QTemporaryDir home;
+        QVERIFY(QDir(home.path()).mkpath("nightly"));
+        const QString folder = home.filePath("nightly");
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        const QVariantMap item{{"index", 0}, {"name", "nightly"}, {"path", folder}, {"isDir", true}, {"kind", "folder"},
+                               {"mime", "inode/directory"}, {"extension", QString()}, {"itemCount", 0}, {"icon", QString()},
+                               {"size", 0}, {"modified", QDateTime::currentDateTime()}, {"selected", false},
+                               {"depth", 0}, {"expanded", false}};
+        for (const QString &view : {QString("FileTile"), QString("FileRow")}) {
+            QQmlComponent component(&engine);
+            component.setData(("import QtQuick\n" + view + " { width: 168; height: 192 }\n").toUtf8(),
+                              QUrl::fromLocalFile(sourceFolder() + "/CutFadeTest.qml"));
+            QVariantMap properties = item;
+            if (view == "FileTile")
+                properties.remove("depth"), properties.remove("expanded");
+            std::unique_ptr<QObject> shown(component.createWithInitialProperties(properties));
+            QVERIFY2(shown, qPrintable(component.errorString()));
+            QObject *picture = shown->findChild<QObject *>("picture");
+            QVERIFY(picture);
+            QCOMPARE(picture->property("opacity").toReal(), 1.0);
+            fileOps.cut({folder});
+            QTRY_COMPARE(picture->property("opacity").toReal(), 0.4);
+            fileOps.copy({folder});
+            QTRY_COMPARE(picture->property("opacity").toReal(), 1.0);
+        }
+    }
+
+    void tileMakesItsPlayMarkOnlyForAVideoWithAFrame()
+    {
+        // The play mark is made for a video whose frame is shown, and no other tile carries its items.
+        QTemporaryDir home;
+        const QString clip = home.filePath("clip.mp4"), bare = home.filePath("bare.mp4");
+        const QString photo = home.filePath("photo.png"), other = home.filePath("notes.bin");
+        for (const QString &file : {clip, bare, other})
+            write(file, "x");
+        QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(photo));
+        // A frame another program left in the cache: nothing here makes one from a video.
+        QImage frame(256, 144, QImage::Format_RGB32);
+        frame.fill(Qt::blue);
+        frame.setText("Thumb::MTime", QString::number(QFileInfo(clip).lastModified().toSecsSinceEpoch()));
+        QVERIFY(QDir().mkpath(home.filePath("cache/large")));
+        QVERIFY(frame.save(home.filePath("cache/large/" + Thumbnails::cacheKey(clip))));
+
+        Theme theme(home.filePath("theme"));
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "FileTile {\n"
+                          "    width: 168; height: 192\n"
+                          "    function all(item) { return Array.from(item.children).reduce((found, child) => found.concat(all(child)), [item]) }\n"
+                          "    function picture() { return all(this).find(item => item.asynchronous === true).status }\n"
+                          "    function marks() {\n"
+                          "        const glyphs = all(this).filter(item => item.name === 'play' && item.size === 16)\n"
+                          "        if (glyphs.length !== 1) return String(glyphs.length)\n"
+                          "        const mark = glyphs[0].parent, middle = mark.mapToItem(this, mark.width / 2, mark.height / 2)\n"
+                          "        return '1 ' + mark.width + 'x' + mark.height + ' at ' + middle.x + ',' + middle.y + (mark.visible ? '' : ' hidden')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/TilePlayMarkTest.qml"));
+        const auto tileOf = [&](const QString &path, const QString &kind, const QString &mime) {
+            return std::unique_ptr<QObject>(component.createWithInitialProperties(
+                {{"index", 0}, {"name", QFileInfo(path).fileName()}, {"path", path}, {"isDir", false}, {"kind", kind},
+                 {"mime", mime}, {"extension", QFileInfo(path).suffix().toUpper()}, {"itemCount", -1}, {"icon", QString()},
+                 {"size", 1}, {"modified", QFileInfo(path).lastModified()}, {"selected", false}}));
+        };
+        const auto said = [](QObject *tile, const char *function) {
+            QVariant result;
+            QMetaObject::invokeMethod(tile, function, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        // The art is 128 by 92, 18 down from the tile's top and centered in its 168: the mark sits in the art's middle.
+        const QString shown = "1 30x30 at 84,64";
+        struct Case { QString path, kind, mime; int status; QString marks; };
+        const QList<Case> cases{{clip, "video", "video/mp4", 1, shown}, {bare, "video", "video/mp4", 3, "0"},
+                                {photo, "image", "image/png", 1, "0"}, {other, "other", "application/octet-stream", 3, "0"}};
+        for (const Case &c : cases) {
+            const auto tile = tileOf(c.path, c.kind, c.mime);
+            QVERIFY2(tile, qPrintable(component.errorString()));
+            // Image.Ready is 1 and Image.Error 3: the picture is shown, or there is none to show.
+            QTRY_COMPARE_WITH_TIMEOUT(said(tile.get(), "picture").toInt(), c.status, 5000);
+            QTRY_COMPARE(said(tile.get(), "marks").toString(), c.marks);
+        }
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
@@ -7229,6 +9078,117 @@ private slots:
         write(dir.filePath("theme/colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#2a2e36\"\n");
         Theme distinct(dir.path());
         QCOMPARE(distinct.lighterBackground(), QColor("#2a2e36"));
+    }
+
+    // A hover message is a small surface over the pane. It steps away from
+    // the pane in the theme's own direction (darker when light, lighter when
+    // dark), stays distinct, and writes its words in a readable ink.
+    void themePaintsTooltipsFromThePalette()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"),
+              "mode = \"light\"\nbackground = \"#faf4ed\"\ndark_background = \"#ede7e1\"\nlighter_background = \"#f2e9e1\"\nforeground = \"#575279\"\n");
+        Theme light(dir.path());
+        QVERIFY(light.tooltipBackground() != light.lighterBackground());
+        QVERIFY(light.tooltipBackground().lightnessF() < light.background().lightnessF());
+        QVERIFY(contrast(light.tooltipBackground(), light.background()) >= 1.4);
+        QVERIFY(contrast(light.tooltipForeground(), light.tooltipBackground()) >= 4.5);
+
+        write(dir.filePath("theme/colors.toml"),
+              "background = \"#1a1b26\"\ndark_background = \"#13141c\"\nlighter_background = \"#24283b\"\nforeground = \"#a9b1d6\"\n");
+        Theme dark(dir.path());
+        QVERIFY(dark.tooltipBackground() != dark.darkBackground());
+        QVERIFY(dark.tooltipBackground().lightnessF() > dark.background().lightnessF());
+        QVERIFY(contrast(dark.tooltipBackground(), dark.background()) >= 1.4);
+        QVERIFY(contrast(dark.tooltipForeground(), dark.tooltipBackground()) >= 4.5);
+
+        write(dir.filePath("theme/colors.toml"),
+              "background = \"#16161a\"\nforeground = \"#c8c8d0\"\n");
+        Theme plain(dir.path());
+        QVERIFY(contrast(plain.tooltipBackground(), plain.background()) >= 1.4);
+        QVERIFY(contrast(plain.tooltipForeground(), plain.tooltipBackground()) >= 4.5);
+    }
+
+    // A folder card sits on the pane; when a theme's lighter background nearly
+    // matches the background the card nearly vanishes (#24). The fill keeps a
+    // floor without touching the palette the rest of Folio draws with.
+    void themeFloorsTheFolderCard()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"),
+              "background = \"#faf4ed\"\nlighter_background = \"#f2e9e1\"\nforeground = \"#575279\"\n");
+        Theme low(dir.path());
+        QVERIFY(contrast(low.folderFill(), low.background()) >= 1.4);
+        QVERIFY(low.folderFill() != low.lighterBackground());
+        // The palette itself is untouched: tiles and panels keep its color.
+        QCOMPARE(low.lighterBackground(), QColor("#f2e9e1"));
+        // A card that already reads keeps the theme's own color.
+        write(dir.filePath("theme/colors.toml"),
+              "mode = \"light\"\nbackground = \"#ffffff\"\nlighter_background = \"#c0c0c0\"\nforeground = \"#000000\"\n");
+        Theme passing(dir.path());
+        QCOMPARE(passing.folderFill(), QColor("#c0c0c0"));
+    }
+
+    // Folio's font is the system's fixed-width one, Omarchy's pick, followed
+    // live: omarchy-font-set rewrites fontconfig's monospace in
+    // ~/.config/fontconfig/fonts.conf, and the window takes it without a
+    // restart. Its size scales Folio's text from Omarchy's default, 11pt.
+    void themeFollowsTheSystemFont()
+    {
+        QCOMPARE(Theme::textScaleFor(11), 1.0);
+        QCOMPARE(Theme::textScaleFor(13.2), 1.2);
+        QCOMPARE(Theme::textScaleFor(40), 1.5);
+        QCOMPARE(Theme::textScaleFor(4), 0.75);
+        QCOMPARE(Theme::textScaleFor(-1), 1.0);
+
+        QTemporaryDir config;
+        const QByteArray was = qgetenv("XDG_CONFIG_HOME");
+        qputenv("XDG_CONFIG_HOME", QFile::encodeName(config.path()));
+        const QFont appFont = QGuiApplication::font();
+        const auto restore = qScopeGuard([&] {
+            if (was.isEmpty())
+                qunsetenv("XDG_CONFIG_HOME");
+            else
+                qputenv("XDG_CONFIG_HOME", was);
+            QGuiApplication::setFont(appFont);
+        });
+        // A real family other than what monospace means now, that fontconfig
+        // knows by that name (not a generic one like Monospace, which a
+        // machine with few fonts lists as a family of its own).
+        const QString before = Theme::resolveFamily("monospace");
+        // A machine without fonts (CI's container) resolves monospace to
+        // nothing real, and has none to switch to.
+        if (before.compare("monospace", Qt::CaseInsensitive) == 0)
+            QSKIP("fontconfig knows no real fonts here");
+        const QStringList generic{"monospace", "sans-serif", "sans serif", "sans", "serif", "system-ui"};
+        QString other;
+        for (const QString &family : QFontDatabase::families())
+            if (family.compare(before, Qt::CaseInsensitive) != 0 && !generic.contains(family.toLower())
+                && Theme::resolveFamily(family) == family) {
+                other = family;
+                break;
+            }
+        if (other.isEmpty())
+            QSKIP("no second font family is installed");
+
+        Theme theme(config.filePath("theme"));
+        QSignalSpy changed(&theme, &Theme::fontChanged);
+        theme.followSystemFont();
+        QCOMPARE(QGuiApplication::font().family(), theme.fontFamily());
+        QVERIFY(theme.fontFamily() != other);
+
+        // As omarchy-font-set writes it.
+        QDir(config.path()).mkpath("fontconfig");
+        write(config.filePath("fontconfig/fonts.conf"),
+              "<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n<fontconfig>\n"
+              "  <match target=\"pattern\">\n    <test name=\"family\" qual=\"any\"><string>monospace</string></test>\n"
+              "    <edit name=\"family\" mode=\"prepend_first\" binding=\"strong\"><string>" + other.toUtf8() + "</string></edit>\n"
+              "  </match>\n</fontconfig>\n");
+        QTRY_COMPARE_WITH_TIMEOUT(theme.fontFamily(), other, 3000);
+        QCOMPARE(QGuiApplication::font().family(), other);
+        QVERIFY(changed.count() >= 1);
     }
 
     void themeFollowsHyprlandRounding()
@@ -8140,6 +10100,34 @@ private slots:
         window->close();
         QTRY_VERIFY(!closing);
         QCOMPARE(replies, (QList<std::pair<uint, QStringList>>{{1, {}}}));
+    }
+
+    void translatorTakesDatesFromAnExplicitTimeLocale()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "en\n");
+        const QByteArray all = qgetenv("LC_ALL"), time = qgetenv("LC_TIME");
+        const auto restore = qScopeGuard([&] {
+            all.isNull() ? qunsetenv("LC_ALL") : qputenv("LC_ALL", all);
+            time.isNull() ? qunsetenv("LC_TIME") : qputenv("LC_TIME", time);
+        });
+        const auto dates = [&](const char *lcAll, const char *lcTime) {
+            qputenv("LC_ALL", lcAll);
+            qputenv("LC_TIME", lcTime);
+            return Translator(dir.path() + "/language", dir.path()).dateLocale();
+        };
+        // Without either, dates follow the language.
+        const QString language = dates("", "");
+        QCOMPARE(language, QLocale().bcp47Name());
+        // LC_TIME sets them apart from it (#72), LC_ALL over that, and a script is kept.
+        QCOMPARE(dates("", "pt_PT.UTF-8"), QLocale("pt_PT").bcp47Name());
+        QCOMPARE(dates("de_DE.UTF-8", "pt_PT.UTF-8"), QLocale("de_DE").bcp47Name());
+        QCOMPARE(QLocale(dates("", "sr_Latn_RS")).script(), QLocale::LatinScript);
+        QCOMPARE(dates("", "C.UTF-8"), QString("C"));
+        // One Qt doesn't know is no override, and LC_ALL still comes first.
+        QCOMPARE(dates("not_a_locale", "pt_PT.UTF-8"), language);
+        // Numbers still follow the language.
+        QCOMPARE(QLocale().toString(1.5, 'f', 1), QString("1.5"));
     }
 
     void translatorLeavesNumbersUngrouped()

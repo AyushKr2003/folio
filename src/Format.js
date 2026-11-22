@@ -3,8 +3,8 @@
 
 // Sizes, dates, counts and thumbnail URLs as the views show them, in one
 // copy that every tile and row shares. A library can't see context
-// properties, so a binding that shows a date reads translator.language
-// itself to follow a language switch; whatever goes through qsTr here is
+// properties, so callers pass translator.dateLocale for dates to follow
+// a language switch; whatever goes through qsTr here is
 // refreshed with the rest of the strings.
 
 // Each unit is whole with its number, so a language can place and space it
@@ -24,18 +24,18 @@ function free(bytes) {
 
 // When it changed: the time for today, the date before that. A plugin's
 // items have no date.
-function when(date) {
+function when(date, localeName) {
     if (!date || isNaN(date.getTime()))
         return ""
-    const locale = Qt.locale()
+    const locale = Qt.locale(localeName)
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
     return spaced(today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat))
 }
 
 // A date and time in the language's short form, as in the details.
-function stamp(date) {
-    return spaced(date.toLocaleString(Qt.locale(), QtQml.Locale.ShortFormat))
+function stamp(date, localeName) {
+    return spaced(date.toLocaleString(Qt.locale(localeName), QtQml.Locale.ShortFormat))
 }
 
 // Dates and times come with no-break spaces ("1:42 PM" with a narrow one)
@@ -69,6 +69,11 @@ function summary(item, type) {
 function thumb(path, mime, px, modified) {
     const changed = modified ? modified.getTime() : 0
     return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
+}
+
+function cachedPreview(path, modified, width, height) {
+    const changed = modified ? modified.getTime() : 0
+    return "image://thumb/cached/" + Math.floor(width) + "/" + Math.floor(height) + "/" + changed + "/" + encodeURIComponent(path)
 }
 
 // A picture as sharp as `px` pixels on its longest side, for the details.

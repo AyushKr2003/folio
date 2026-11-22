@@ -137,8 +137,11 @@ QtObject {
     // Right-click on an item outside the selection selects just it, so
     // the menu acts on what was clicked. Returns the item, or null for
     // empty space.
+    // The handler is on the view's content (a Flickable puts it there), so
+    // its point is in content coordinates already: adding the scroll again
+    // picked an item as far further on as the view was scrolled (#129).
     function menuAt(point) {
-        const index = view.indexAt(point.position.x + view.contentX, point.position.y + view.contentY)
+        const index = view.indexAt(point.position.x, point.position.y)
         if (index >= 0 && !backend.folder.isSelected(index))
             click(index, 0)
         return index >= 0 ? backend.folder.get(index) : null

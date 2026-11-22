@@ -2,6 +2,8 @@
 #include "theme.h"
 
 #include <QDir>
+#include <QEvent>
+#include <QFontDatabase>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -9,8 +11,10 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 #include <utility>
+#include <fontconfig/fontconfig.h>
 
 namespace {
 
@@ -44,6 +48,51 @@ QColor mix(const QColor &a, const QColor &b, double t) {
                             a.blueF() * (1 - t) + b.blueF() * t);
 }
 
+double ratio(const QColor &a, const QColor &b) {
+    const double x = luminance(a), y = luminance(b);
+    return (std::max(x, y) + .05) / (std::min(x, y) + .05);
+}
+
+// WCAG's minimum contrast for text. A surface needs much less.
+constexpr double textFloor = 4.5;
+constexpr double surfaceFloor = 1.4;
+// The ground luminance where black and white read equally.
+constexpr double midLuminance = .179;
+// Bisection steps in ensureRatio, finer than one eight-bit level.
+constexpr int bisectionSteps = 18;
+// One eight-bit channel's range, so the rounding repair can never step further.
+constexpr int channelRange = 255;
+
+// The ink when it already reads at need, else the least mix toward black or
+// white that still does once rounded to eight-bit channels.
+QColor ensureRatio(const QColor &ink, const QColor &ground, double need) {
+    if (ratio(ink, ground) >= need)
+        return ink;
+    const QColor toward = luminance(ground) > midLuminance ? QColor(Qt::black) : QColor(Qt::white);
+    double low = 0, high = 1;
+    QColor best = toward;
+    for (int i = 0; i < bisectionSteps; ++i) {
+        const double middle = (low + high) / 2;
+        const QColor candidate = mix(ink, toward, middle);
+        if (ratio(candidate, ground) >= need) {
+            best = candidate;
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    best = QColor(best.red(), best.green(), best.blue());
+    const int step = toward == QColor(Qt::white) ? 1 : -1;
+    for (int i = 0; i < channelRange && ratio(best, ground) < need; ++i) {
+        const QColor next(qBound(0, best.red() + step, channelRange), qBound(0, best.green() + step, channelRange),
+                          qBound(0, best.blue() + step, channelRange));
+        if (next == best)
+            break;
+        best = next;
+    }
+    return best;
+}
+
 struct Palette {
     QHash<QString, QColor> colors;
     bool light = false;
@@ -72,6 +121,7 @@ Palette readPalette(const QString &path) {
 Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl, const QString &events)
     : QObject(parent),
       m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory) {
+    m_fontFamily = QGuiApplication::font().family();
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
@@ -190,6 +240,26 @@ QColor Theme::secondaryForeground() const {
     return mix(background(), foreground(), 0.68);
 }
 
+// A tooltip is a small surface over the pane. Take the theme's own step away
+// from it - darker in light themes, lighter in dark ones - and lift it just
+// enough to read as a card. Material's ToolTip forces its own dark gray, which
+// leaves a light theme's text unreadable on it.
+QColor Theme::tooltipBackground() const {
+    const QColor base = light() ? darkBackground() : lighterBackground();
+    return ensureRatio(base, background(), surfaceFloor);
+}
+
+// Tooltip words: the theme's foreground, raised to textFloor on that surface.
+QColor Theme::tooltipForeground() const {
+    return ensureRatio(foreground(), tooltipBackground(), textFloor);
+}
+
+// A folder card's fill: the lighter background, raised to surfaceFloor so the
+// card stands off the pane on themes where the two nearly match (#24).
+QColor Theme::folderFill() const {
+    return ensureRatio(lighterBackground(), background(), surfaceFloor);
+}
+
 void Theme::reload() {
     refreshRounding();
     const auto paths = m_watcher.files() + m_watcher.directories();
@@ -214,5 +284,87 @@ void Theme::reload() {
         m_colors = palette.colors;
         m_light = palette.light;
         emit changed();
+    }
+}
+
+// Folio's text sizes are drawn for Omarchy's default text size, 11pt, at
+// which its base text is 13px; the system's size scales them, up to half
+// again or down by a quarter, past which the rows and columns no longer
+// hold their text.
+static constexpr qreal designPoints = 11;
+static constexpr int designPixels = 13;
+
+qreal Theme::textScaleFor(qreal points) {
+    return points > 0 ? std::clamp(points / designPoints, 0.75, 1.5) : 1.0;
+}
+
+QString Theme::resolveFamily(const QString &family) {
+    // Asked of a configuration loaded afresh, rather than of the one Qt read
+    // when Folio started, so a choice made since (omarchy-font-set) counts,
+    // and Qt's own is left alone.
+    FcConfig *config = FcInitLoadConfigAndFonts();
+    if (!config)
+        return family;
+    QString resolved = family;
+    if (FcPattern *pattern = FcNameParse(reinterpret_cast<const FcChar8 *>(family.toUtf8().constData()))) {
+        FcConfigSubstitute(config, pattern, FcMatchPattern);
+        FcDefaultSubstitute(pattern);
+        FcResult result;
+        if (FcPattern *match = FcFontMatch(config, pattern, &result)) {
+            FcChar8 *name = nullptr;
+            if (FcPatternGetString(match, FC_FAMILY, 0, &name) == FcResultMatch && name)
+                resolved = QString::fromUtf8(reinterpret_cast<const char *>(name));
+            FcPatternDestroy(match);
+        }
+        FcPatternDestroy(pattern);
+    }
+    FcConfigDestroy(config);
+    return resolved;
+}
+
+void Theme::followSystemFont() {
+    m_fontDebounce.setSingleShot(true);
+    m_fontDebounce.setInterval(200);
+    connect(&m_fontDebounce, &QTimer::timeout, this, &Theme::readSystemFont);
+    // omarchy-font-set writes the user's fontconfig file; its folder is
+    // watched too, for when it's made.
+    const QString fontconfig = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/fontconfig";
+    QDir().mkpath(fontconfig);
+    m_fontWatcher.addPath(fontconfig);
+    if (QFileInfo::exists(fontconfig + "/fonts.conf"))
+        m_fontWatcher.addPath(fontconfig + "/fonts.conf");
+    connect(&m_fontWatcher, &QFileSystemWatcher::directoryChanged, this, [this, fontconfig] {
+        // A file written anew stops being watched; it's watched again.
+        if (QFileInfo::exists(fontconfig + "/fonts.conf") && !m_fontWatcher.files().contains(fontconfig + "/fonts.conf"))
+            m_fontWatcher.addPath(fontconfig + "/fonts.conf");
+        m_fontDebounce.start();
+    });
+    connect(&m_fontWatcher, &QFileSystemWatcher::fileChanged, this, [this] { m_fontDebounce.start(); });
+    // The platform theme (qtengine) tells each window when its fonts change.
+    qApp->installEventFilter(this);
+    readSystemFont();
+}
+
+bool Theme::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() == QEvent::ThemeChange)
+        m_fontDebounce.start();
+    return QObject::eventFilter(watched, event);
+}
+
+void Theme::readSystemFont() {
+    const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QString family = resolveFamily(fixed.family());
+    const qreal scale = textScaleFor(fixed.pointSizeF());
+    QFont font(family);
+    font.setStyleHint(QFont::Monospace);
+    font.setPixelSize(qRound(designPixels * scale));
+    // New controls and dialogs take the application's font; what's on screen
+    // follows fontFamily and textScale.
+    if (font != QGuiApplication::font())
+        QGuiApplication::setFont(font);
+    if (family != m_fontFamily || !qFuzzyCompare(scale, m_textScale)) {
+        m_fontFamily = family;
+        m_textScale = scale;
+        emit fontChanged();
     }
 }

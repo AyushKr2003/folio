@@ -11,6 +11,8 @@ GridView {
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
     function focusView() { forceActiveFocus() }
+    // The preview's ↑ and ↓: the tile above or below, as the arrow keys move here.
+    function stepRow(direction) { direction < 0 ? moveCurrentIndexUp() : moveCurrentIndexDown() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
 
@@ -40,8 +42,8 @@ GridView {
         rectOf: (i) => {
             const c = i % grid.columns
             const x = grid.effectiveLayoutDirection === Qt.RightToLeft ? grid.width - (c + 1) * grid.cellWidth : c * grid.cellWidth
-            return Qt.rect(x + 20, Math.floor(i / grid.columns) * grid.cellHeight + 12,
-                           grid.cellWidth - 40, grid.cellHeight - 24)
+            return Qt.rect(x + 14, Math.floor(i / grid.columns) * grid.cellHeight + 12,
+                           grid.cellWidth - 28, grid.cellHeight - 24)
         }
     }
 
@@ -70,23 +72,6 @@ GridView {
     // narrow pane (one side of a split) caps it at a tile its width holds.
     property real zoom: 1
     readonly property real tileZoom: Math.max(0.5, Math.min(zoom, (width - 40) / 128))
-    signal zoomRequested(int step)
-    WheelHandler {
-        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-        acceptedModifiers: Qt.ControlModifier
-        // A touchpad sends many small deltas: a step per notch's worth
-        // (120), and nothing for an event that doesn't move up or down.
-        property real pending: 0
-        onWheel: (event) => {
-            // Every whole notch is a step; the rest waits for the next event.
-            pending += event.angleDelta.y
-            while (Math.abs(pending) >= 120) {
-                const step = pending > 0 ? 1 : -1
-                grid.zoomRequested(step)
-                pending -= step * 120
-            }
-        }
-    }
     // The rows reflow, so bring the cursor's tile back into view.
     onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
     readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * tileZoom)))
@@ -104,7 +89,7 @@ GridView {
         onActivated: backend.open(path)
     }
 
-    Text {
+    FolioText {
         anchors.centerIn: parent
         // A search says it's looking until it finds something, or is done.
         readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0
@@ -112,6 +97,7 @@ GridView {
         text: searching ? qsTr("Searching…")
             : backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
             : plugins.views[backend.path] ? plugins.views[backend.path].empty : qsTr("This folder is empty")
+        textFormat: Text.PlainText
         color: theme.secondaryForeground
     }
 }

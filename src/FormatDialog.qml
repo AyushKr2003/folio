@@ -50,16 +50,18 @@ FolioDialog {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 2
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 visible: !!dialog.drive && dialog.drive.label.length > 0
                 text: dialog.drive ? dialog.drive.label : ""
+                textFormat: Text.PlainText
                 color: theme.brightForeground
                 elide: Text.ElideRight
             }
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 text: dialog.drive ? dialog.drive.title : ""
+                textFormat: Text.PlainText
                 color: dialog.drive && dialog.drive.label.length > 0 ? theme.secondaryForeground : theme.brightForeground
                 elide: Text.ElideRight
             }
@@ -67,22 +69,24 @@ FolioDialog {
         // What it'll be formatted as, exFAT unless another is picked when
         // there's more than one to pick from; what it's good for is said
         // on hover.
-        Text {
+        FolioText {
             visible: dialog.choices.length === 1
             text: dialog.picked.name || ""
             color: theme.secondaryForeground
             HoverHandler { id: fsHover }
-            ToolTip.visible: fsHover.hovered
-            ToolTip.delay: 600
-            ToolTip.text: dialog.picked.detail || ""
+            FolioToolTip {
+                visible: fsHover.hovered && (dialog.picked.detail || "").length > 0
+                text: dialog.picked.detail || ""
+            }
         }
         PlainButton {
             id: fsButton
             visible: dialog.choices.length > 1
             text: (dialog.picked.name || "") + "  ▾"
-            ToolTip.visible: hovered
-            ToolTip.delay: 600
-            ToolTip.text: dialog.picked.detail || ""
+            FolioToolTip {
+                visible: fsButton.hovered && (dialog.picked.detail || "").length > 0
+                text: dialog.picked.detail || ""
+            }
             onClicked: fsMenu.popup(fsButton, 0, fsButton.height + 4)
             FolioMenu {
                 id: fsMenu
@@ -110,7 +114,7 @@ FolioDialog {
         Keys.onReturnPressed: cancelButton.forceActiveFocus()
         Keys.onEnterPressed: cancelButton.forceActiveFocus()
     }
-    Text {
+    FolioText {
         Layout.fillWidth: true
         text: qsTr("Everything on this drive will be erased. This can't be undone.")
         color: theme.red

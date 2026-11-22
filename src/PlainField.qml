@@ -5,7 +5,8 @@ import QtQuick.Controls
 // and the hint inside it, where it stays (no floating label animation).
 TextField {
     id: field
-    font.pixelSize: 13
+    font.family: theme.fontFamily
+    font.pixelSize: Math.round(13 * theme.textScale)
     color: theme.brightForeground
     selectionColor: theme.accent
     selectedTextColor: theme.accentForeground
@@ -24,7 +25,7 @@ TextField {
         radius: Math.min(4, theme.radius)
     }
 
-    Text {
+    FolioText {
         x: field.leftPadding
         width: field.width - field.leftPadding - field.rightPadding
         anchors.verticalCenter: parent.verticalCenter

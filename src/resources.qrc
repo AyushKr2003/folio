@@ -4,6 +4,7 @@
         <file>FolderPane.qml</file>
         <file>Glyph.qml</file>
         <file>IconButton.qml</file>
+        <file>FolioToolTip.qml</file>
         <file>FileTile.qml</file>
         <file>FileRow.qml</file>
         <file>FolderGrid.qml</file>
@@ -32,6 +33,8 @@
         <file>FormatDialog.qml</file>
         <file>DriveMenu.qml</file>
         <file>PlaceMenu.qml</file>
+        <file>FolioText.qml</file>
+        <file>omarchy.svg</file>
         <file>Spinner.qml</file>
         <file>RenameDialog.qml</file>
         <file>MountPrompt.qml</file>

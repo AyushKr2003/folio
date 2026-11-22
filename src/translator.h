@@ -18,6 +18,7 @@
 class Translator : public QTranslator {
     Q_OBJECT
     Q_PROPERTY(QString language READ language NOTIFY changed)
+    Q_PROPERTY(QString dateLocale READ dateLocale NOTIFY changed)
 
 public:
     explicit Translator(const QString &languageFile = {}, const QString &catalogDirectory = ":/i18n",
@@ -25,6 +26,7 @@ public:
     ~Translator() override;
 
     QString language() const;
+    QString dateLocale() const;
     bool isEmpty() const override;
     QString translate(const char *context, const char *sourceText, const char *disambiguation = nullptr,
                       int n = -1) const override;
@@ -51,6 +53,7 @@ private:
     // swapped under a lock rather than freed beneath them.
     mutable QReadWriteLock m_lock;
     QString m_language;
+    QString m_dateLocale;
     // Each translation with the code of the catalog it came from, whose
     // plural rule its forms follow: a string still in English counts the
     // English way.

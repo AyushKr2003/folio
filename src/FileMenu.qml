@@ -2,12 +2,13 @@ import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Extract (for archives), Burn (for disk images), plugins' own actions for
-// it, Share (whatever plugins offer for it), Pin, Terminal, Trash. On empty
-// space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files. In the
-// trash: Restore, Empty Trash and Delete…, without the entries that change
-// files or plugins' actions. On a plugin's item: Open, and nothing for files. Entries show their
-// keys, so the menu also teaches the shortcuts.
+// Extract (for archives), Make Executable (for one's own files), Burn (for
+// disk images), plugins' own actions for it, Share (whatever plugins offer
+// for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New Folder,
+// Copy Path, Terminal, hidden files. In the trash: Restore, Empty Trash and
+// Delete…, without the entries that change files or plugins' actions. On a
+// plugin's item: Open, and nothing for files. Entries show their keys, so
+// the menu also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -45,6 +46,10 @@ FolioMenu {
     // as the menu opens rather than on every binding.
     property bool canBurn: false
     property var burnTargets: []
+    // Whether these are one's own files that can be made to run or not, and
+    // whether they all run now, asked as the menu opens.
+    property bool canRun: false
+    property bool runs: false
 
     // Opens at the pointer (`at`, in the window), or (from the keyboard,
     // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
@@ -61,6 +66,8 @@ FolioMenu {
             return
         canBurn = forItem && forFiles && !trashView && !forSelection && fileOps.canBurn(target.path)
         burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
+        canRun = forItem && forFiles && !trashView && fileOps.canSetExecutable(paths)
+        runs = canRun && fileOps.executable(paths)
         // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared. A plugin's own submenus are made
@@ -189,7 +196,8 @@ FolioMenu {
         keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(fileMenu.folder)
     }
-    MenuLine { shown: fileMenu.forFiles }
+    // In the trash nothing an item gets below shows, so no line opens it.
+    MenuLine { shown: fileMenu.forFiles && !(fileMenu.forItem && fileMenu.trashView) }
     // Archives are extracted, not compressed again.
     readonly property bool archives: !trashView && forItem && forFiles && fileOps.canExtract(paths)
     FolioMenuItem {
@@ -201,6 +209,11 @@ FolioMenu {
         shown: fileMenu.archives
         text: qsTr("Extract")
         onTriggered: fileOps.extract(fileMenu.paths)
+    }
+    FolioMenuItem {
+        shown: fileMenu.canRun
+        text: fileMenu.runs ? qsTr("Make Not Executable") : qsTr("Make Executable")
+        onTriggered: fileOps.setExecutable(fileMenu.paths, !fileMenu.runs)
     }
     // Each USB stick or SD card the image could go on, those too small for
     // it listed but greyed out. Asked before anything's erased.
@@ -303,8 +316,8 @@ FolioMenu {
     }
     // On empty space, only where the folder shown is one to work in.
     FolioMenuItem {
-        shown: fileMenu.forItem ? fileMenu.forFolder && fileMenu.forFiles
-                                : fileMenu.folder.startsWith("/") && !fileMenu.trashView
+        shown: !fileMenu.trashView && (fileMenu.forItem ? fileMenu.forFolder && fileMenu.forFiles
+                                                       : fileMenu.folder.startsWith("/"))
         text: qsTr("Open Terminal Here")
         onTriggered: fileOps.openTerminal(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }

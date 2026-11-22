@@ -44,6 +44,10 @@ Rectangle {
     // A picture's size or a text's opening lines once they've been read off
     // the UI thread.
     readonly property var info: backend.details
+    // The item's type: its name's, or the one read from what it holds when its name gave none, never one read for another item.
+    readonly property string type: (info.path === item.path && info.mime) || item.mime || ""
+    // Text files show their opening lines in a frame, archives the names inside.
+    readonly property bool listed: hasItem && (item.kind === "text" || backend.listsArchive(type))
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
@@ -52,6 +56,12 @@ Rectangle {
     // Gone (a folder selected, or another view), it describes nothing, so
     // plugins stop being asked about the file it showed last.
     Component.onDestruction: backend.describe({}, false)
+    // Made executable or not from the menu: the item looks the same in the
+    // folder, so its permissions are read again here.
+    Connections {
+        target: pane.folderPane ? pane.folderPane.paneFileOps : null
+        function onModesChanged(paths) { if (pane.hasItem && paths.includes(pane.item.path)) pane.describe() }
+    }
 
     // It sits on the columns' background, and their separator marks its
     // edge.
@@ -115,7 +125,7 @@ Rectangle {
                 // As many pixels as it's drawn with, in steps, so resizing
                 // the window doesn't read it again at every width.
                 readonly property int pixels: Math.min(8192, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 512) * 512)
-                readonly property bool shown: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem
+                readonly property bool shown: pane.hasItem && !pane.item.isDir && !pane.listed && !pane.pluginItem
                 // The file the cursor last rested on, and those read ahead.
                 property string rested: ""
                 property var ahead: []
@@ -148,20 +158,20 @@ Rectangle {
                 visible: status === Image.Ready
             }
 
-            // Text files show their opening lines instead of a picture.
+            // Text files show their opening lines instead of a picture, archives the names inside.
             Rectangle {
                 anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
+                visible: pane.listed
                 color: theme.background
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.12)
                 clip: true
-                Text {
+                FolioText {
                     anchors.fill: parent
                     anchors.margins: 14
                     text: pane.info.text || ""
                     color: theme.foreground
-                    font.pixelSize: 10
+                    size: 10
                     wrapMode: Text.WrapAnywhere
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
@@ -173,7 +183,7 @@ Rectangle {
             // flashing the icon.
             Glyph {
                 anchors.centerIn: parent
-                visible: pane.hasItem && pane.item.kind !== "text"
+                visible: pane.hasItem && !pane.listed
                          && (!big.shown || (big.failed && quick.status !== Image.Ready))
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
@@ -189,26 +199,27 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             // Aligned explicitly, so that they're mirrored: left as they
             // are, a Latin name would stay on the left.
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
+                textFormat: Text.PlainText
                 color: theme.brightForeground
-                font.pixelSize: 15
+                size: 15
                 font.weight: Font.DemiBold
                 wrapMode: Text.WrapAnywhere
                 maximumLineCount: 3
                 elide: Text.ElideRight
             }
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                    return Format.summary(pane.item, backend.typeName(pane.type))
                 }
                 color: theme.secondaryForeground
-                font.pixelSize: 12
+                size: 12
                 elide: Text.ElideRight
             }
         }
@@ -221,44 +232,56 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: pane.trashed
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
+                textFormat: Text.PlainText
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
                 elide: Text.ElideMiddle
             }
             // When it was made, where the filesystem keeps that.
-            Text { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.info.created
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: {
-                    translator.language // Re-read when the language (and so the default locale) changes.
-                    return pane.info.created ? Format.stamp(pane.info.created) : ""
-                }
+                text: pane.info.created ? Format.stamp(pane.info.created, translator.dateLocale) : ""
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
-            Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !pane.pluginItem
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: {
-                    translator.language // Re-read when the language (and so the default locale) changes.
                     const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
-                    return pane.hasItem && when ? Format.stamp(when) : ""
+                    return pane.hasItem && when ? Format.stamp(when, translator.dateLocale) : ""
                 }
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
-            Text { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            // As ls writes them; Make Executable in the menu changes them. The
+            // row keeps its place while they're read, so moving through files
+            // doesn't shift the rows below it. Not in the trash, where nothing
+            // changes them.
+            readonly property bool permissionsShown: pane.hasItem && !(pane.folderPane && pane.folderPane.inTrash) && !pane.pluginItem
+                                                     && pane.item.path.startsWith("/")
+            FolioText { visible: parent.permissionsShown; text: qsTr("Permissions"); color: theme.secondaryForeground; size: 12 }
+            FolioText {
+                visible: parent.permissionsShown
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.info.permissions || ""
+                color: theme.foreground
+                size: 12
+            }
+            FolioText { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.drive
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
@@ -267,11 +290,11 @@ Rectangle {
                     return pane.drive ? Format.size(pane.drive.free) : ""
                 }
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
             // What the file opens with, picked from the apps that can open
             // its type, which makes that app the type's default.
-            Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            FolioText { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; size: 12}
             PlainButton {
                 id: opensWith
                 // Read again after picking one, which changes the default.
@@ -284,9 +307,21 @@ Rectangle {
                 readonly property var current: apps.find(app => app.isDefault)
                 // Another app's file dialog is no place to change one's apps.
                 visible: apps.length > 1 && !chooser
+                // Its width at most: a long app name shrinks it and loses its middle to …
+                // rather than pushing the whole pane past its edge.
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
+                leftPadding: 16
+                rightPadding: 16
+                implicitWidth: Math.max(88, appName.implicitWidth + arrow.implicitWidth + 8 + leftPadding + rightPadding)
                 implicitHeight: 28
-                text: (current ? current.name : qsTr("Choose")) + "  ▾"
+                text: current ? current.name : qsTr("Choose")
+                contentItem: RowLayout {
+                    spacing: 8
+                    FolioText { id: appName; Layout.fillWidth: true; text: opensWith.text; textFormat: Text.PlainText; elide: Text.ElideMiddle; color: theme.foreground; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    FolioText { id: arrow; text: "▾"; color: theme.foreground; verticalAlignment: Text.AlignVCenter }
+                }
                 // A second click closes it again.
                 onClicked: appsMenu.visible ? appsMenu.close() : appsMenu.popup(opensWith, 0, opensWith.height + 4)
                 Keys.onEscapePressed: pane.finished()
@@ -311,21 +346,21 @@ Rectangle {
                     }
                 }
             }
-            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
+            FolioText { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; size: 12}
+            FolioText {
                 visible: !!pane.info.width
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
                                                      .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
-                font.pixelSize: 12
+                size: 12
             }
             // Plugins' rows, label and value in turn, after Folio's own: a
             // plugin's item's details, or what plugins say about a file.
             Repeater {
                 model: (pane.pluginItem ? pane.item.details : pane.info.plugins || []).reduce((all, row) => all.concat([row[0], row[1]]), [])
-                Text {
+                FolioText {
                     required property string modelData
                     required property int index
                     readonly property bool label: index % 2 === 0
@@ -333,7 +368,7 @@ Rectangle {
                     horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
                     text: modelData
                     color: label ? theme.secondaryForeground : theme.foreground
-                    font.pixelSize: 12
+                    size: 12
                     elide: label ? Text.ElideNone : Text.ElideMiddle
                 }
             }
@@ -356,7 +391,7 @@ Rectangle {
             // when Opens with picks another.
             readonly property string app: {
                 opensWith.picked
-                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.item.mime || "") : ""
+                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.type) : ""
             }
             text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
                 //: %1 is the name of the app the file opens in, like "Plain".
@@ -369,8 +404,8 @@ Rectangle {
             }
             contentItem: RowLayout {
                 // A long app name ends in … rather than running past the button.
-                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
-                Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
+                FolioText { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
+                FolioText { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }
     }

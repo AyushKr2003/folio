@@ -16,6 +16,8 @@
 #include <QMimeDatabase>
 #include <QtConcurrent>
 #include <algorithm>
+#include <numeric>
+#include <vector>
 #include <tuple>
 #include <sys/stat.h>
 
@@ -369,6 +371,12 @@ QVector<FolderModel::Entry> FolderModel::listTrash(const QStringList &trashDirs,
     return entries;
 }
 
+QString FolderModel::typeByContent(const QString &path, const QString &mime) {
+    if (mime != "application/octet-stream")
+        return mime;
+    return QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchContent).name();
+}
+
 FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes) {
     Entry e;
     e.name = info.fileName();
@@ -382,6 +390,40 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
     e.extension = e.isDir ? QString() : info.suffix().toUpper();
     return e;
 }
+
+// What a search query asks for: a name containing some text, with one of
+// some extensions if it names them ("beach ext:jpg,png", "ext:pdf").
+struct SearchFilter {
+    QString text;
+    QStringList extensions;
+
+    explicit SearchFilter(const QString &query) {
+        const QString q = query.trimmed();
+        // Split keeping the empty words between repeated spaces, so the text
+        // left once the ext: words are taken out is as it was typed.
+        QStringList words;
+        for (const QString &word : q.split(QLatin1Char(' '))) {
+            if (word.startsWith(QLatin1String("ext:"), Qt::CaseInsensitive)) {
+                for (QString ext : word.mid(4).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+                    if (ext.startsWith(QLatin1Char('.')))
+                        ext.remove(0, 1);
+                    if (!ext.isEmpty())
+                        extensions << ext.toLower();
+                }
+            } else {
+                words << word;
+            }
+        }
+        text = words.join(QLatin1Char(' ')).trimmed();
+    }
+
+    bool matches(const QFileInfo &info) const {
+        const QString name = info.fileName();
+        if (!extensions.isEmpty() && (info.isDir() || !extensions.contains(info.suffix().toLower())))
+            return false;
+        return name.contains(text, Qt::CaseInsensitive);
+    }
+};
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
@@ -403,6 +445,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
         return entries;
     const QDir::Filters filters = entryFilters(showHidden);
+    const SearchFilter wanted(query);
 
     // Breadth first, so what's near comes before what's deep when there are
     // more matches than the limit.
@@ -417,7 +460,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             if (stop && stop())
                 return {};
             const QFileInfo info = it.nextFileInfo();
-            if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
+            if (entries.size() < limit && wanted.matches(info)) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
                 // Only what fits a file chooser's filter uses up the limit.
@@ -447,32 +490,83 @@ QStringList FolderModel::sortModes() {
     return {"name", "kind", "modified", "oldest", "size"};
 }
 
-void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
-    std::stable_sort(entries.begin(), entries.end(), before(sort, locale));
+static QCollator collatorFor(const QLocale &locale) {
+    QCollator collator(locale);
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    return collator;
 }
 
-std::function<bool(const FolderModel::Entry &, const FolderModel::Entry &)> FolderModel::before(const QString &sort, const QLocale &locale) {
-    auto collator = std::make_shared<QCollator>(locale);
-    collator->setNumericMode(true);
-    collator->setCaseSensitivity(Qt::CaseInsensitive);
-    return [collator, sort](const Entry &a, const Entry &b) {
+// The order a sort mode names, read once rather than on every compare.
+struct Order {
+    explicit Order(const QString &sort)
+        : newest(sort == "modified"), oldest(sort == "oldest"), size(sort == "size"), kind(sort == "kind") {}
+    bool newest, oldest, size, kind;
+
+    // Whether `a` comes before `b`, `collate` comparing their names (or,
+    // given true, their extensions) as a collator does.
+    template <typename Collate>
+    bool operator()(const FolderModel::Entry &a, const FolderModel::Entry &b, const Collate &collate) const {
         // Folders first in every order, as everywhere else on the desktop.
         if (a.isDir != b.isDir)
             return a.isDir;
-        if (sort == "modified" && a.modified != b.modified)
+        if (newest && a.modified != b.modified)
             return a.modified > b.modified;
-        if (sort == "oldest" && a.modified != b.modified)
+        if (oldest && a.modified != b.modified)
             return a.modified < b.modified;
         // Biggest first; folders have no size of their own and stay by name.
-        if (sort == "size" && !a.isDir && a.size != b.size)
+        if (size && !a.isDir && a.size != b.size)
             return a.size > b.size;
-        if (sort == "kind" && !a.isDir) {
+        if (kind && !a.isDir) {
             if (a.kind != b.kind)
                 return a.kind < b.kind;
             if (a.extension != b.extension)
-                return collator->compare(a.extension, b.extension) < 0;
+                return collate(true) < 0;
         }
-        return collator->compare(a.name, b.name) < 0;
+        return collate(false) < 0;
+    }
+};
+
+void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
+    // The C locale's keys keep the case its compare ignores.
+    if (locale.language() == QLocale::C) {
+        std::stable_sort(entries.begin(), entries.end(), before(sort, locale));
+        return;
+    }
+    const QCollator collator = collatorFor(locale);
+    // Each name (and, by kind, extension) made into a key once, so a compare
+    // reads bytes instead of collating both strings again: sorting a folder
+    // of many thousand files collated each name a dozen times and more.
+    std::vector<QCollatorSortKey> names, extensions;
+    names.reserve(entries.size());
+    for (const Entry &e : std::as_const(entries))
+        names.push_back(collator.sortKey(e.name));
+    if (sort == "kind") {
+        extensions.reserve(entries.size());
+        for (const Entry &e : std::as_const(entries))
+            extensions.push_back(collator.sortKey(e.extension));
+    }
+    const Order comesBefore(sort);
+    std::vector<qsizetype> order(entries.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](qsizetype i, qsizetype j) {
+        return comesBefore(entries.at(i), entries.at(j), [&](bool extension) {
+            return extension ? extensions[i].compare(extensions[j]) : names[i].compare(names[j]);
+        });
+    });
+    QVector<Entry> sorted;
+    sorted.reserve(entries.size());
+    for (qsizetype i : order)
+        sorted.push_back(std::move(entries[i]));
+    entries = std::move(sorted);
+}
+
+std::function<bool(const FolderModel::Entry &, const FolderModel::Entry &)> FolderModel::before(const QString &sort, const QLocale &locale) {
+    auto collator = std::make_shared<QCollator>(collatorFor(locale));
+    return [collator, order = Order(sort)](const Entry &a, const Entry &b) {
+        return order(a, b, [&](bool extension) {
+            return extension ? collator->compare(a.extension, b.extension) : collator->compare(a.name, b.name);
+        });
     };
 }
 

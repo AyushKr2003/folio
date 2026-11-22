@@ -47,6 +47,7 @@ Rectangle {
             [qsTr("Go home"), [["Alt", "Home"]]],
             [qsTr("Type a path or a server's address"), [["Ctrl", "L"]]],
             [qsTr("Search this folder and below"), [["/"]]],
+            [qsTr("Search by extension, alone or after a name"), [["/", "~ext:jpg,png"]]],
             [qsTr("Sidebar, panes and details"), [["Tab"], ["Shift", "Tab"]]]
         ]},
         { title: qsTr("Selecting"), shortcuts: [
@@ -71,7 +72,7 @@ Rectangle {
         ]},
         { title: qsTr("View"), shortcuts: [
             [qsTr("Columns, list or grid"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"]]],
-            [qsTr("Bigger, smaller or normal tiles"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
+            [qsTr("Bigger, smaller or normal tiles and rows"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
             [qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]],
             [qsTr("Show hidden files"), [["Ctrl", "H"]]],
             [qsTr("Reload"), [["F5"]]]
@@ -137,15 +138,15 @@ Rectangle {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text {
+                    FolioText {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignLeft
                         text: qsTr("Keyboard shortcuts")
                         color: theme.brightForeground
-                        font.pixelSize: 16
+                        size: 16
                         font.weight: Font.DemiBold
                     }
-                    Text { text: qsTr("Escape closes"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    FolioText { text: qsTr("Escape closes"); color: theme.secondaryForeground; size: 12}
                 }
 
                 RowLayout {
@@ -176,11 +177,11 @@ Rectangle {
         required property var modelData
         Layout.fillWidth: true
         spacing: 2
-        Text {
+        FolioText {
             Layout.bottomMargin: 6
             text: group.modelData.title
             color: theme.secondaryForeground
-            font.pixelSize: 11
+            size: 11
             font.letterSpacing: 1.3
             font.capitalization: Font.AllUppercase
         }
@@ -193,7 +194,7 @@ Rectangle {
                 Layout.preferredHeight: 28
                 spacing: 16
                 // Aligned explicitly, so that it's mirrored with the rest.
-                Text {
+                FolioText {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
                     text: shortcut.modelData[0]
@@ -209,12 +210,12 @@ Rectangle {
                             required property var modelData
                             required property int index
                             spacing: 4
-                            Text {
+                            FolioText {
                                 visible: way.index > 0
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "/"
                                 color: theme.secondaryForeground
-                                font.pixelSize: 12
+                                size: 12
                             }
                             Repeater {
                                 model: way.modelData
@@ -242,21 +243,21 @@ Rectangle {
             border.width: 1
             border.color: Qt.alpha(theme.foreground, 0.18)
         }
-        Text {
+        FolioText {
             id: cap
             visible: !key.word
             anchors.centerIn: parent
             text: key.modelData
             color: theme.accent
-            font.pixelSize: 12
+            size: 12
         }
-        Text {
+        FolioText {
             id: said
             visible: key.word
             anchors.verticalCenter: parent.verticalCenter
             text: key.modelData.slice(1)
             color: theme.secondaryForeground
-            font.pixelSize: 12
+            size: 12
         }
     }
 }

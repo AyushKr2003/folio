@@ -18,13 +18,17 @@
 class Thumbnails {
 public:
     // `remoteRoot` is where GVfs mounts other machines (Mounter::root());
-    // tests give their own.
+    // tests give their own. `patience` is how long a thumbnailer may take,
+    // in milliseconds; tests shorten it.
     explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {},
-                        const QString &remoteRoot = {});
+                        const QString &remoteRoot = {}, int patience = 15000);
 
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
     QImage load(const QString &path, const QString &mime, int size) const;
+
+    // Read a fresh thumbnail from any standard bucket, smallest first.
+    QImage cached(const QString &path) const;
 
     // A picture at `pixels` on its longest side, as sharp as the details
     // column draws it: read from the file when it's that small already,
@@ -51,7 +55,7 @@ private:
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
-    static QImage pdfPage(const QString &path, int pixels);
+    static QImage pdfPage(const QString &path, int pixels, int patience);
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     void rememberFailure(const QString &path, const QDateTime &modified) const;
     bool failedBefore(const QString &path, const QDateTime &modified) const;
@@ -60,6 +64,7 @@ private:
 
     QString m_cache;
     QString m_remoteRoot;
+    int m_patience;
     QHash<QString, QString> m_thumbnailers;
 };
 
