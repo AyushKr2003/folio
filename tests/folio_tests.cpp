@@ -7242,6 +7242,31 @@ private slots:
         QVERIFY(!devices.at(4).toMap().contains("volume"));
     }
 
+    void placesDropDrivesAStalledReadingStillHasMounted()
+    {
+        // The last reading (still running again, stalled on a network
+        // mount) had Photos mounted and a stick plugged in; GIO has since
+        // seen Photos unmounted and the stick pulled out. An fstab mount
+        // GIO doesn't manage is left as it was read.
+        const QList<Drives::Volume> volumes{{"Photos", "/dev/sdb1", ""}};
+        const QVariantList drives{
+            QVariantMap{{"name", "Photos"}, {"path", "/run/media/me/Photos"}, {"icon", "drive"}, {"release", "eject"}, {"free", 7}},
+            QVariantMap{{"name", "STICK"}, {"path", "/run/media/me/STICK"}, {"icon", "drive"}, {"release", "eject"}, {"free", 3}},
+            QVariantMap{{"name", "archive"}, {"path", "/mnt/archive"}, {"icon", "drive"}, {"release", ""}, {"free", 5}},
+        };
+        const QList<Places::Mount> mounts{
+            {"/run/media/me/Photos", "/dev/sdb1", "ext4", "Photos"},
+            {"/run/media/me/STICK", "/dev/no-such-stick1", "vfat", "STICK"},
+            {"/mnt/archive", "server:/archive", "nfs", "archive"},
+        };
+        const auto devices = Places::devicesFrom(volumes, drives, mounts);
+        QCOMPARE(devices.size(), 2);
+        // Photos is the unmounted row, which mounts on a click.
+        QCOMPARE(devices.at(0).toMap().value("name").toString(), QString("Photos"));
+        QVERIFY(devices.at(0).toMap().value("path").toString().isEmpty());
+        QCOMPARE(devices.at(1).toMap().value("path").toString(), QString("/mnt/archive"));
+    }
+
     void drivesReadWhatUdevFoundOnADevice()
     {
         // The system's own disk holds a filesystem (an encrypted one's

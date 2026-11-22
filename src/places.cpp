@@ -442,9 +442,29 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
             listed << v.root;
         }
     }
-    for (const QVariant &drive : drives)
-        if (!listed.contains(drive.toMap().value("path").toString()))
-            devices << drive;
+    for (const QVariant &drive : drives) {
+        const QString path = drive.toMap().value("path").toString();
+        if (listed.contains(path))
+            continue;
+        // `drives` may come from a reading older than GIO's volumes (one
+        // stalled on a network mount). A drive GIO now lists unmounted, or
+        // mounted elsewhere, isn't at this path any more, and one whose
+        // device is gone was pulled out; either row would open a folder
+        // that's no longer the drive's. A mount GIO doesn't manage stays.
+        QString device;
+        for (const Mount &m : mounts)
+            if (m.root == path) {
+                device = m.device;
+                break;
+            }
+        if (!device.isEmpty()) {
+            const bool gioHasIt = std::any_of(volumes.begin(), volumes.end(),
+                                              [&](const Drives::Volume &v) { return v.id == device; });
+            if (gioHasIt || (device.startsWith("/dev/") && !QFileInfo::exists(device)))
+                continue;
+        }
+        devices << drive;
+    }
     return devices;
 }
 
