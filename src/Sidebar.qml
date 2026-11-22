@@ -65,7 +65,9 @@ Rectangle {
         // in what it opens), or the top.
         let at = 0
         for (let i = 0; i < rows.length; ++i)
-            if (rows[i].root !== undefined ? inside(rows[i].root) : rows[i].path === activePath)
+            // An unmounted drive has no path, so it mustn't match a folder
+            // that's under no row at all.
+            if (rows[i].root !== undefined ? inside(rows[i].root) : !!activePath && rows[i].path === activePath)
                 at = i
         cursor = at
         forceActiveFocus()
