@@ -50,6 +50,22 @@ QLocale formatLocale(const QString &language) {
     return QLocale(language);
 }
 
+// Only an explicit date/time override breaks the UI-language default.
+// Qt accepts POSIX locale names with codesets/modifiers. Unknown names
+// resolve to C; ignore those, but honor an explicitly requested C/POSIX.
+QLocale dateLocale(const QLocale &fallback) {
+    QString name = qEnvironmentVariable("LC_ALL");
+    if (name.isEmpty())
+        name = qEnvironmentVariable("LC_TIME");
+    if (name.isEmpty())
+        return fallback;
+    const QString base = name.section('.', 0, 0).section('@', 0, 0);
+    if (base == "C" || base == "POSIX")
+        return QLocale::c();
+    const QLocale locale(name);
+    return locale.language() == QLocale::C ? fallback : locale;
+}
+
 } // namespace
 
 // CLDR cardinal plural categories for whole counts, for Omarchy's languages
@@ -109,6 +125,11 @@ QString Translator::language() const {
     return m_language;
 }
 
+QString Translator::dateLocale() const {
+    QReadLocker locker(&m_lock);
+    return m_dateLocale;
+}
+
 bool Translator::isEmpty() const {
     QReadLocker locker(&m_lock);
     return m_strings.isEmpty();
@@ -164,16 +185,20 @@ void Translator::reload() {
         return;
 
     const auto strings = catalog(m_catalogDirectory, language);
+    QLocale locale = formatLocale(language);
+    const QLocale dates = ::dateLocale(locale);
+    // name() drops nondefault scripts (sr_Latn_RS becomes sr_RS). Keep the
+    // script when QML reparses it, and preserve the explicit C locale.
+    const QString dateName = dates.language() == QLocale::C ? QString("C") : dates.bcp47Name();
     {
         QWriteLocker locker(&m_lock);
         m_language = language;
+        m_dateLocale = dateName;
         m_strings = strings;
     }
-    // Dates, numbers, and Qt's own day and month names follow the language
-    // too, and right-to-left languages mirror the window. Numbers aren't
-    // grouped, as in Omarchy, so a year or a picture's width never grows a
-    // separator.
-    QLocale locale = formatLocale(language);
+    // Numbers and sorting still follow the UI language, as does mirroring.
+    // Dates use their separate locale without changing those defaults.
+    // Numbers aren't grouped, as in Omarchy.
     locale.setNumberOptions(QLocale::OmitGroupSeparator);
     QLocale::setDefault(locale);
     QGuiApplication::setLayoutDirection(locale.textDirection());

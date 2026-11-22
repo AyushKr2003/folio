@@ -42,7 +42,7 @@ FolioDialog {
 
     // Aligned explicitly, so that it's mirrored: a message that starts with
     // a file name would otherwise follow the name's script.
-    Text {
+    FolioText {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignLeft
         text: dialog.message

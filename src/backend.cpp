@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QThreadPool>
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QMimeDatabase>
@@ -16,6 +17,7 @@
 #include <QStorageInfo>
 #include <QUrl>
 #include <QtConcurrent>
+#include <sys/stat.h>
 #include <unistd.h>
 
 Backend::Backend(const QString &home, QObject *parent)
@@ -51,13 +53,8 @@ Backend::Backend(const QString &home, QObject *parent)
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
-        while (m_preview.canReadLine()) {
-            const QString shown = QString::fromUtf8(m_preview.readLine()).trimmed();
-            m_previewed = shown;
-            const QFileInfo info(shown);
-            if (info.absolutePath() == path())
-                emit selectRequested(info.fileName());
-        }
+        while (m_preview.canReadLine())
+            previewSaid(QString::fromUtf8(m_preview.readLine()).trimmed());
     });
     connect(&m_preview, &QProcess::stateChanged, this, &Backend::previewingChanged);
     connect(&m_preview, &QProcess::finished, this, [this](int, QProcess::ExitStatus status) {
@@ -402,13 +399,46 @@ void Backend::arrive(const QString &folder) {
         showItem(target.filePath());
 }
 
-QString Backend::serverAddress(const QString &text) {
-    static const QStringList schemes{"sftp", "smb", "ftp", "dav", "davs"};
+QString Backend::serverAddress(const QString &text, QString *problem) {
+    if (problem)
+        problem->clear();
+    const QString raw = text.trimmed();
+    static const QStringList schemes{"sftp", "smb", "nfs", "ftp", "ftps", "dav", "davs"};
     // Tolerant, so a path typed with spaces in it is escaped rather than
-    // refused; QUrl puts the scheme in lower case.
-    QUrl url(text.trimmed(), QUrl::TolerantMode);
+    // refused; QUrl puts the scheme in lower case. A Windows UNC path has no
+    // query or fragment, so its folder names are set decoded.
+    QUrl url;
+    if (raw.startsWith("\\\\")) {
+        const QString unc = raw.mid(2).replace('\\', '/');
+        url.setScheme("smb");
+        url.setHost(unc.section('/', 0, 0));
+        const QString rest = unc.section('/', 1);
+        url.setPath(rest.isEmpty() ? "/" : "/" + rest, QUrl::DecodedMode);
+    } else {
+        url = QUrl(raw, QUrl::TolerantMode);
+    }
+    if (url.scheme() == "ssh")
+        url.setScheme("sftp");
+    else if (url.scheme() == "cifs")
+        url.setScheme("smb");
+    else if (url.scheme() == "webdav")
+        url.setScheme("dav");
+    else if (url.scheme() == "webdavs")
+        url.setScheme("davs");
     if (!url.isValid() || !schemes.contains(url.scheme()) || url.host().isEmpty())
         return {};
+    if (!url.password().isEmpty()) {
+        if (problem)
+            *problem = tr("Leave the password out of the address; enter it when asked to sign in.");
+        return {};
+    }
+    // A Windows host on its own is fine (its shares are offered to pick
+    // from), but an NFS server has no such list.
+    if (url.scheme() == "nfs" && url.path().section('/', 0, 0, QString::SectionSkipEmpty).isEmpty()) {
+        if (problem)
+            *problem = tr("Add the exported folder, as in nfs://%1/export.").arg(url.host());
+        return {};
+    }
     if (url.path().isEmpty())
         url.setPath("/");
     return url.toString(QUrl::FullyEncoded);
@@ -486,6 +516,18 @@ QString Backend::takeSelection() {
     return name;
 }
 
+// As ls writes them: read, write and run for the owner, the group and
+// everyone, with the setuid, setgid and sticky bits in the run places.
+static QString permissionsText(mode_t mode) {
+    const auto run = [mode](mode_t x, mode_t special, char set, char setOnly) {
+        return mode & special ? (mode & x ? set : setOnly) : (mode & x ? 'x' : '-');
+    };
+    const char text[] = {mode & S_IRUSR ? 'r' : '-', mode & S_IWUSR ? 'w' : '-', run(S_IXUSR, S_ISUID, 's', 'S'),
+                         mode & S_IRGRP ? 'r' : '-', mode & S_IWGRP ? 'w' : '-', run(S_IXGRP, S_ISGID, 's', 'S'),
+                         mode & S_IROTH ? 'r' : '-', mode & S_IWOTH ? 'w' : '-', run(S_IXOTH, S_ISVTX, 't', 'T'), 0};
+    return QString::fromLatin1(text);
+}
+
 void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
@@ -512,21 +554,56 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Reading the file waits on its disk, which for a slow mount would hold
     // up moving through files, so it happens off the UI thread.
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details, path, mime]() mutable {
         watcher->deleteLater();
         if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
+        // An archive's names, by the type read from what it holds when its
+        // name gave none. bsdtar can take seconds, so listings take a
+        // thread of their own, and the rest of what's read never waits on one.
+        if (!Previewer::listsArchive(details.value("mime", mime).toString()))
+            return;
+        static QThreadPool *const listing = [] {
+            auto *pool = new QThreadPool;
+            pool->setMaxThreadCount(1);
+            return pool;
+        }();
+        auto *names = new QFutureWatcher<QString>(this);
+        connect(names, &QFutureWatcherBase::finished, this, [this, names, generation] {
+            names->deleteLater();
+            if (generation != *m_describing)
+                return;
+            m_details.insert("text", names->result());
+            emit detailsChanged();
+        });
+        names->setFuture(QtConcurrent::run(listing, [path, latest = m_describing, generation] {
+            return *latest == generation ? Previewer::archiveNames(path) : QString();
+        }));
     });
     // Stepping through files faster than they're read queues readings; the
     // ones overtaken before they start are skipped rather than left to tie
-    // up the global pool's threads.
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
+    // up the threads the next folder is listed on.
+    // Every local item is read now (its permissions at least), so the
+    // readings get a few threads of their own: moving across folders on a
+    // mount that stopped answering leaves reads stuck, and in the shared
+    // pool they'd keep any folder from being listed. Never torn down, so a
+    // stuck one can't keep Folio from quitting either. A file its extension
+    // could not name has its type read from what it holds.
+    static QThreadPool *const reading = [] {
+        auto *pool = new QThreadPool;
+        pool->setMaxThreadCount(4);
+        return pool;
+    }();
+    const bool unnamed = mime == "application/octet-stream";
+    watcher->setFuture(QtConcurrent::run(reading, [path, kind, mime, unnamed, inTrash, latest = m_describing, generation] {
         QVariantMap read;
         if (*latest != generation)
             return read;
+        if (struct stat st; ::stat(QFile::encodeName(path).constData(), &st) == 0)
+            read.insert("permissions", permissionsText(st.st_mode));
         if (inTrash) {
             read.insert("origin", FileOps::originalPath(path));
             read.insert("deleted", FileOps::deletedAt(path));
@@ -534,6 +611,11 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             // When the filesystem keeps it (ext4, btrfs, xfs do; some network
             // shares don't, and then there's no Created).
             read.insert("created", born);
+        }
+        // The type read is this file's alone: the pane believes it only for the path it was read from.
+        if (unnamed) {
+            read.insert("path", path);
+            read.insert("mime", FolderModel::typeByContent(path, mime));
         }
         if (kind == "image") {
             QImageReader reader(path);
@@ -641,10 +723,15 @@ bool Backend::goTyped(const QString &text) {
     // A server is mounted through GVfs, which also says where on the mount
     // the address's path is (a WebDAV address's path can be part of the
     // mount itself), and connecting goes there.
-    if (const QString address = serverAddress(text); !address.isEmpty()) {
+    QString problem;
+    if (const QString address = serverAddress(text, &problem); !address.isEmpty()) {
         if (!m_mounter.busy())
             mount(address, QUrl(address).host(), false);
         return true;
+    }
+    if (!problem.isEmpty()) {
+        setMessage(problem);
+        return false;
     }
     // A view is typed as the path bar shows it, by its own name.
     if (const QString view = text.trimmed(); FolderModel::isView(view))
@@ -752,4 +839,23 @@ void Backend::setBusy(const QString &busy) {
         return;
     m_busy = busy;
     emit busyChanged();
+}
+
+void Backend::previewSaid(const QString &shown) {
+    if (shown.startsWith("step ")) {
+        // The view moves and sends its new item right away (or nothing, at
+        // the first or last row); "stepped" after it lets the preview take
+        // the arrows that came meanwhile.
+        emit stepRequested(shown.mid(5).toInt() < 0 ? -1 : 1);
+        if (previewing())
+            m_preview.write("stepped\n");
+        return;
+    }
+    m_previewed = shown;
+    // Any file in the folder shown or below it: one in a folder opened in
+    // place (the list's tree) is a row too, and the cursor goes to it, so
+    // ↑ and ↓ step from there.
+    const QString here = path().endsWith('/') ? path() : path() + '/';
+    if (shown.startsWith(here))
+        emit selectPathRequested(shown);
 }

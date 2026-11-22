@@ -173,12 +173,12 @@ Rectangle {
         function onFailed(message) { sidebar.target.showMessage(message) }
     }
 
-    component SectionLabel: Text {
+    component SectionLabel: FolioText {
         Layout.topMargin: 21
         Layout.leftMargin: 14
         Layout.bottomMargin: 6
         color: theme.secondaryForeground
-        font.pixelSize: 11
+        size: 11
         font.letterSpacing: 1.3
         font.capitalization: Font.AllUppercase
     }
@@ -250,30 +250,31 @@ Rectangle {
                 spacing: 2
                 // Set, so that they're mirrored: left as they are, Latin
                 // text would follow its own script and stay on the left.
-                Text {
+                FolioText {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
                     text: row.text
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: row.active ? theme.brightForeground : theme.foreground
                 }
-                Text {
+                FolioText {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignLeft
                     visible: row.detail.length > 0
                     text: row.detail
                     elide: Text.ElideRight
                     color: theme.secondaryForeground
-                    font.pixelSize: 11
+                    size: 11
                 }
             }
-            Text {
+            FolioText {
                 readonly property string said: row.mark ? row.mark.status : row.status
                 visible: said.length > 0
                 text: said
                 color: !row.mark ? row.statusColor : row.mark.tone === "error" ? theme.red
                      : row.mark.tone === "warning" ? theme.yellow : theme.secondaryForeground
-                font.pixelSize: 11
+                size: 11
             }
         }
     }
@@ -380,11 +381,11 @@ Rectangle {
                 border.width: pinDrop.containsDrag ? 2 : 1
                 border.color: theme.accent
                 radius: Math.min(4, theme.radius)
-                Text {
+                FolioText {
                     anchors.centerIn: parent
                     text: qsTr("Drop to pin")
                     color: theme.accent
-                    font.pixelSize: 12
+                    size: 12
                 }
                 DropArea {
                     id: pinDrop

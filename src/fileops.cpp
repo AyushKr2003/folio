@@ -55,8 +55,20 @@ static void tellEveryone() {
 }
 
 FileOps::FileOps(QObject *parent) : QObject(parent) {
-    if (auto *clipboard = QGuiApplication::clipboard())
-        connect(clipboard, &QClipboard::dataChanged, this, &FileOps::clipboardChanged);
+    if (auto *clipboard = QGuiApplication::clipboard()) {
+        const auto readCut = [this, clipboard] {
+            bool cut = false;
+            const QMimeData *data = clipboard->mimeData();
+            const QStringList paths = data && data->hasFormat("x-special/gnome-copied-files") ? pathsFrom(data, &cut) : QStringList();
+            m_cut.clear();
+            if (cut)
+                for (const QString &path : paths)
+                    m_cut.insert(QDir::cleanPath(path));
+            emit clipboardChanged();
+        };
+        readCut();
+        connect(clipboard, &QClipboard::dataChanged, this, readCut);
+    }
     s_everyone << this;
 }
 
@@ -145,6 +157,14 @@ QStringList FileOps::pathsFrom(const QMimeData *data, bool *cut) {
 bool FileOps::canPaste() const {
     const auto *clipboard = QGuiApplication::clipboard();
     return clipboard && !pathsFrom(clipboard->mimeData(), nullptr).isEmpty();
+}
+
+bool FileOps::isCut(const QString &path) const {
+    // The item itself or a folder above it, which takes it along.
+    for (QString at = QDir::cleanPath(path); at.size() > 1; at = QFileInfo(at).path())
+        if (m_cut.contains(at))
+            return true;
+    return false;
 }
 
 bool FileOps::shiftHeld() {
@@ -1043,6 +1063,68 @@ void FileOps::compress(const QStringList &selected) {
     connect(process, &QProcess::readyReadStandardError, this, [process, read] { read(process); });
 }
 
+// Only the owner may change a file's mode, so it's offered for one's own.
+static bool ownFile(const QString &path, struct stat *st) {
+    return ::lstat(QFile::encodeName(path).constData(), st) == 0 && S_ISREG(st->st_mode) && st->st_uid == ::geteuid();
+}
+
+bool FileOps::canSetExecutable(const QStringList &paths) const {
+    struct stat st;
+    return !paths.isEmpty() && std::all_of(paths.begin(), paths.end(), [&st](const QString &path) { return ownFile(path, &st); });
+}
+
+bool FileOps::executable(const QStringList &paths) const {
+    struct stat st;
+    return !paths.isEmpty() && std::all_of(paths.begin(), paths.end(), [&st](const QString &path) {
+        return ownFile(path, &st) && (st.st_mode & S_IXUSR);
+    });
+}
+
+void FileOps::setExecutable(const QStringList &paths, bool on) {
+    // A copy still being written takes its source's mode once it's done.
+    if (paths.isEmpty() || !idle())
+        return;
+    QStringList changed, failures;
+    const auto fail = [&](const QString &path, int why) {
+        failures << tr("%1 (%2)").arg(QFileInfo(path).fileName(), QString::fromLocal8Bit(strerror(why)));
+    };
+    for (const QString &path : paths) {
+        // Looked at and changed through one handle, so a link put anywhere
+        // in the path after the menu opened can't send the change elsewhere.
+        const int fd = ::open(QFile::encodeName(path).constData(), O_PATH | O_NOFOLLOW | O_CLOEXEC);
+        struct stat st;
+        // One gone or out of reach since the menu opened says why; a
+        // folder, link or someone else's file is just left alone.
+        if (fd < 0 || ::fstat(fd, &st) != 0) {
+            fail(path, errno);
+            if (fd >= 0)
+                ::close(fd);
+            continue;
+        }
+        if (!S_ISREG(st.st_mode) || st.st_uid != ::geteuid()) {
+            ::close(fd);
+            continue;
+        }
+        // Whoever may read it may run it, so a file kept private stays so;
+        // off, no one may.
+        const mode_t read = st.st_mode & (S_IRUSR | S_IRGRP | S_IROTH);
+        const mode_t mode = on ? (st.st_mode | read >> 2) : (st.st_mode & ~(S_IXUSR | S_IXGRP | S_IXOTH));
+        // fchmod() can't take an O_PATH handle; its /proc link can be changed.
+        const bool done = ::chmod(("/proc/self/fd/" + QByteArray::number(fd)).constData(), mode & 07777) == 0;
+        const int why = errno;
+        ::close(fd);
+        if (done)
+            changed << path;
+        else
+            fail(path, why);
+    }
+    if (!changed.isEmpty())
+        emit modesChanged(changed);
+    if (!failures.isEmpty())
+        emit failed((on ? tr("Couldn't make %1 executable.") : tr("Couldn't make %1 not executable."))
+                        .arg(QLocale().createSeparatedList(failures)));
+}
+
 bool FileOps::canExtract(const QStringList &paths) const {
     // A lone compressed file (notes.txt.gz) is no archive to bsdtar, and a
     // disk image is for burning, not unpacking.
@@ -1667,6 +1749,7 @@ void FileOps::newFolder(const QString &folder) {
     }
     remember({MakingFolder, name, 1, {identified({true, QDir(folder).filePath(name), {}})}});
     emit done(folder, name);
+    emit folderCreated(folder, name);
 }
 
 // Undo and redo.

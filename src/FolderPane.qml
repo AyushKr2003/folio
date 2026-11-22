@@ -236,6 +236,14 @@ FocusScope {
     Connections {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
+        function onSelectPathRequested(path) {
+            const row = backend.folder.indexOfPath(path)
+            if (view.item && row >= 0)
+                view.item.select(row, false)
+        }
+        // Followed now, not later as a re-read is: the preview waits for the
+        // new item before its next arrow.
+        function onStepRequested(direction) { if (view.item) { view.item.stepRow(direction); pane.follow() } }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
     }
 
@@ -294,6 +302,13 @@ FocusScope {
                 view.item.select(row, false)
             else
                 backend.expectSelection(name)
+        }
+        // A new folder is asked a name at once, the way the rename dialog
+        // does (Escape keeps "Untitled Folder"). Each pane has its own
+        // fileOps, so it's this pane's folder wherever it was made: an
+        // earlier column, or one opened in place in the list.
+        function onFolderCreated(folder, name) {
+            rename.open({ path: folder + "/" + name, isDir: true })
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
@@ -399,10 +414,11 @@ FocusScope {
                 anchors.fill: parent
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
-                Text {
+                FolioText {
                     id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || (slowWork.shown ? slowWork.working : "") || backend.notice
+                    textFormat: Text.PlainText
                     color: theme.brightForeground
                     elide: Text.ElideRight
                 }
@@ -469,9 +485,31 @@ FocusScope {
                 folder: backend.path
                 items: view.item
             }
+
+            // Ctrl+scroll over the grid or the list steps its size, as Ctrl+=
+            // and Ctrl+- do. It's the view's own, so it's asked before the
+            // view scrolls.
+            WheelHandler {
+                parent: view.item
+                enabled: pane.viewMode !== "columns"
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                acceptedModifiers: Qt.ControlModifier
+                // A touchpad sends many small deltas: a step per notch's worth
+                // (120), and nothing for an event that doesn't move up or down.
+                property real pending: 0
+                onWheel: (event) => {
+                    // Every whole notch is a step; the rest waits for the next event.
+                    pending += event.angleDelta.y
+                    while (Math.abs(pending) >= 120) {
+                        const step = pending > 0 ? 1 : -1
+                        pane.zoomBy(step)
+                        pending -= step * 120
+                    }
+                }
+            }
         }
-        Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
-        Component { id: listView; FolderList { } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom } }
+        Component { id: listView; FolderList { zoom: pane.zoom } }
         Component { id: columnsView; FolderColumns { detailsPane: pane } }
     }
 

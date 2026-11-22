@@ -1,21 +1,22 @@
 #!/bin/sh
 # Marks the Dropbox folder with Dropbox's own mark, even without dropbox-cli.
-# With it, the folder also says when it's syncing or Dropbox has stopped (up
-# to date is the normal state and says nothing), and while Dropbox runs, its
+# Its state isn't said on the row: Dropbox shows that itself, and a word
+# beside the folder only took room from its name. While Dropbox runs, its
 # files can be shared by link.
 if [ ! -d "$HOME/Dropbox" ]; then
   echo '{}'
   exit 0
 fi
 # Without an actions list every action would be on, so it's always there.
-status=
 actions=', "actions": []'
+# Folio ignores "state", but a poll printing something new has it ask about
+# files again, so a file's "syncing" goes once Dropbox is up to date.
+state=
 if command -v dropbox-cli >/dev/null 2>&1; then
-  said=$(dropbox-cli status 2>/dev/null | tr 'A-Z' 'a-z')
-  case "$said" in
-    "" | *"isn't running"*) status=', "status": "stopped", "tone": "error"' ;;
-    "up to date"*) actions=', "actions": ["link"]' ;;
-    *) status=', "status": "syncing", "tone": "warning"'; actions=', "actions": ["link"]' ;;
+  case "$(dropbox-cli status 2>/dev/null | tr 'A-Z' 'a-z')" in
+    "" | *"isn't running"*) state=stopped ;;
+    "up to date"*) state="up to date"; actions=', "actions": ["link"]' ;;
+    *) state=syncing; actions=', "actions": ["link"]' ;;
   esac
 fi
-printf '{"places": [{"path": "~/Dropbox", "icon": "dropbox.svg"%s}]%s}\n' "$status" "$actions"
+printf '{"places": [{"path": "~/Dropbox", "icon": "dropbox.svg"}]%s, "state": "%s"}\n' "$actions" "$state"

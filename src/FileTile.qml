@@ -1,4 +1,5 @@
 import QtQuick
+import Folio 1.0
 import QtQuick.Shapes
 import QtQuick.Effects
 import "Format.js" as Format
@@ -25,6 +26,9 @@ Item {
     required property bool selected
 
     property bool current: false
+    // Cut and not yet pasted: its picture faded and its name in the colour of
+    // a disabled menu entry.
+    readonly property bool cut: fileOps.cutCount > 0 && fileOps.isCut(path)
 
     signal clicked(int modifiers)
     signal activated()
@@ -46,6 +50,8 @@ Item {
     // the box around it takes the scaled size for the layout.
     Item {
         id: artBox
+        objectName: "picture"
+        opacity: tile.cut ? 0.4 : 1
         width: 128 * tile.zoom
         height: 92 * tile.zoom
         anchors.top: parent.top
@@ -67,15 +73,16 @@ Item {
         }
     }
 
-    Text {
+    FolioText {
         id: label
         anchors.top: artBox.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
-        color: tile.current ? theme.accent : theme.foreground
-        font.pixelSize: 12
+        textFormat: Text.PlainText
+        color: tile.cut ? theme.secondaryForeground : tile.current ? theme.accent : theme.foreground
+        size: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         maximumLineCount: 2
@@ -86,7 +93,7 @@ Item {
     // Size and when, quietly, under the name: "28.0 KB · 2:14 PM" today,
     // "28.0 KB · 11/9/26" before; just the item count for a folder, the
     // subtitle for a plugin's item.
-    Text {
+    FolioText {
         anchors.top: label.bottom
         anchors.topMargin: 3
         anchors.horizontalCenter: parent.horizontalCenter
@@ -98,11 +105,11 @@ Item {
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
-            const date = tile.isDir ? "" : Format.when(tile.modified)
+            const date = tile.isDir ? "" : Format.when(tile.modified, translator.dateLocale)
             return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
         color: theme.secondaryForeground
-        font.pixelSize: 10
+        size: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
     }
@@ -119,13 +126,18 @@ Item {
         onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
     }
 
+    DragPicture {
+        id: dragPicture
+        // Cleared first: Qt (6.12) reloads a new picture at the size of the
+        // one before, which for a grab only warns ("Ignoring sourceSize").
+        onReady: { tile.Drag.imageSource = ""; tile.Drag.imageSource = url }
+    }
+
     HoverHandler {
         id: hover
         // The picture that follows the pointer while dragging; taken ahead
         // of time because a drag can't wait for it.
-        // Cleared first: Qt (6.12) reloads a new picture at the size of the
-        // one before, which for a grab only warns ("Ignoring sourceSize").
-        onHoveredChanged: if (hovered) art.grabToImage(result => { tile.Drag.imageSource = ""; tile.Drag.imageSource = result.url })
+        onHoveredChanged: if (hovered) dragPicture.capture(art)
     }
 
     // Dragging hands the file to whatever it lands on as a URI list: the
@@ -134,23 +146,32 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
-    // A plugin's item isn't a file to hand anywhere.
-    DragHandler {
-        target: null
-        enabled: tile.kind !== "item"
-        // Dragging a selected item takes the whole selection along. The list
-        // is built as the drag starts, not again on every change of selection.
-        onActiveChanged: {
-            if (active)
-                tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
-            tile.Drag.active = active
-        }
-    }
+    // Presses take only the picture and name, the area the band hits (see
+    // FolderGrid): the padding around them is empty space to start a band.
+    Item {
+        x: 14
+        y: 12
+        width: tile.width - 28
+        height: tile.height - 24
 
-    TapHandler {
-        id: tap
-        onTapped: tile.clicked(tap.point.modifiers)
-        onDoubleTapped: tile.activated()
+        // A plugin's item isn't a file to hand anywhere.
+        DragHandler {
+            target: null
+            enabled: tile.kind !== "item"
+            // Dragging a selected item takes the whole selection along. The list
+            // is built as the drag starts, not again on every change of selection.
+            onActiveChanged: {
+                if (active)
+                    tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
+                tile.Drag.active = active
+            }
+        }
+
+        TapHandler {
+            id: tap
+            onTapped: tile.clicked(tap.point.modifiers)
+            onDoubleTapped: tile.activated()
+        }
     }
 
     // A folder's outline: a card with a tab on its top left edge, drawn as
@@ -177,9 +198,9 @@ Item {
             height: 92
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
-                    : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
-                    : theme.lighterBackground
+                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.folderFill, Qt.alpha(theme.accent, 0.3))
+                    : hover.hovered ? Qt.tint(theme.folderFill, Qt.alpha(theme.foreground, 0.06))
+                    : theme.folderFill
                 strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
                 strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
                 joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
@@ -230,14 +251,16 @@ Item {
                 layer.textureSize: thumb.layer.textureSize
             }
 
-            // Videos get a play mark over their frame.
-            Rectangle {
-                visible: thumb.status === Image.Ready && tile.kind === "video"
+            // Videos get a play mark over their frame, made when there is a frame: every other tile goes without its items.
+            Loader {
                 anchors.centerIn: parent
-                width: 30; height: 30
-                radius: Math.min(4, theme.radius)
-                color: Qt.alpha(theme.darkBackground, 0.75)
-                Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
+                active: thumb.status === Image.Ready && tile.kind === "video"
+                sourceComponent: Rectangle {
+                    width: 30; height: 30
+                    radius: Math.min(4, theme.radius)
+                    color: Qt.alpha(theme.darkBackground, 0.75)
+                    Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
+                }
             }
 
             // Stand-ins while a thumbnail loads, or when none can be made.
@@ -306,15 +329,13 @@ Item {
                 border.width: 1
                 border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
-                Column {
-                    x: 9; y: 11
-                    spacing: 6
-                    Rectangle { width: 34; height: 4; color: tile.kindColor }
-                    Repeater {
-                        model: [48, 48, 40, 48, 30]
-                        Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
-                    }
-                }
+                // A heading and five lines of text, each placed by hand: a Column and a Repeater cost more to make than the six bars.
+                Rectangle { x: 9; y: 11; width: 34; height: 4; color: tile.kindColor }
+                Rectangle { x: 9; y: 21; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 29; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 37; width: 40; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 45; width: 48; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
+                Rectangle { x: 9; y: 53; width: 30; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
             }
             Rectangle {
                 visible: tile.extension.length > 0
@@ -324,7 +345,7 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                Text { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); font.pixelSize: 9; font.bold: true; color: theme.background }
+                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); textFormat: Text.PlainText; size: 9; font.bold: true; color: theme.background }
             }
         }
     }
@@ -355,7 +376,7 @@ Item {
                     }
                 }
             }
-            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; font.pixelSize: 9; color: theme.secondaryForeground }
+            FolioText { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; size: 9; color: theme.secondaryForeground }
         }
     }
 

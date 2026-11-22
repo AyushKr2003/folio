@@ -136,11 +136,14 @@ class Chooser : public QDBusAbstractAdaptor {
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.impl.portal.FileChooser")
 
 public:
-    explicit Chooser(Windows *windows);
+    using WindowsFactory = std::function<Windows *()>;
+
+    explicit Chooser(QObject *parent, WindowsFactory windows);
 
     // Exports the object, then claims the bus name; false when another
-    // chooser holds it.
-    static bool registerOn(Windows *windows);
+    // chooser holds it. The factory builds the UI on the first dialog call,
+    // so portal activation at login doesn't pay for windows never opened.
+    static bool registerOn(QObject *object, WindowsFactory windows);
 
 public slots:
     void OpenFile(const QDBusObjectPath &handle, const QString &appId, const QString &parentWindow,
@@ -154,7 +157,7 @@ private:
     void open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, const QString &title,
               const QVariantMap &options, const QDBusMessage &message);
 
-    Windows *m_windows;
+    WindowsFactory m_windows;
     int m_open = 0;
     // D-Bus starts the chooser again for the next dialog, so it stays only
     // a minute after its last one, and longer only for file work started in

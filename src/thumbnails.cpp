@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "foldermodel.h"
 #include "mounter.h"
 
 #include <QBuffer>
@@ -23,6 +24,8 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <atomic>
+#include <csignal>
+#include <unistd.h>
 
 namespace {
 
@@ -70,24 +73,60 @@ QByteArray withPlainText(const QByteArray &png) {
     return out;
 }
 
-// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
+// The spec's Exec field, such as "ffmpegthumbnailer -i %i -o %o -s %s -f": %i input path, %u input URI, %o output, %s size, %% a percent sign.
+// Each code is read once, so a name that holds one arrives as it is.
 QStringList expandCommand(const QString &command, const QString &input, const QString &output, int size) {
     QStringList args = QProcess::splitCommand(command);
     for (QString &arg : args) {
-        arg.replace("%i", input).replace("%u", fileUri(input)).replace("%o", output)
-           .replace("%s", QString::number(size)).replace("%%", "%");
+        QString expanded;
+        for (qsizetype at = 0; at < arg.size(); ++at) {
+            const QChar code = arg.at(at) == '%' && at + 1 < arg.size() ? arg.at(at + 1) : QChar();
+            if (code == 'i')
+                expanded += input;
+            else if (code == 'u')
+                expanded += fileUri(input);
+            else if (code == 'o')
+                expanded += output;
+            else if (code == 's')
+                expanded += QString::number(size);
+            else if (code == '%')
+                expanded += '%';
+            else {
+                expanded += arg.at(at);
+                continue;
+            }
+            ++at;
+        }
+        arg = expanded;
     }
     return args;
+}
+
+// Runs a helper to its end, true when it ended well. It runs in a process
+// group of its own, so that past `patience` milliseconds what it started
+// (glycin and the office thumbnailer start their own) is stopped with it:
+// a broken file must never hang a tile forever.
+bool run(QProcess &process, const QString &program, const QStringList &args, int patience) {
+    process.setChildProcessModifier([] { ::setpgid(0, 0); });
+    process.start(program, args);
+    if (!process.waitForFinished(patience)) {
+        if (process.processId() > 0)
+            ::kill(-pid_t(process.processId()), SIGKILL);
+        process.waitForFinished(1000);
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
 
 } // namespace
 
 Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories,
-                       const QString &remoteRoot)
+                       const QString &remoteRoot, int patience)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
                   : cacheDirectory),
-      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot) {
+      m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot),
+      m_patience(patience) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -97,7 +136,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         for (const QString &base : data)
             directories << base + "/thumbnailers";
     }
+    QMimeDatabase mimes;
     for (const QString &directory : directories) {
+        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
+        QHash<QString, QString> named, aliased;
         QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
         while (it.hasNext()) {
             // A tiny desktop-entry reader: QSettings would treat the
@@ -115,12 +157,23 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
                     fields.insert(line.section('=', 0, 0).trimmed(), line.section('=', 1).trimmed());
             }
             const QString exec = fields.value("Exec");
+            // The program Exec runs has to be installed, or a .thumbnailer
+            // file left behind would mark every file it was asked about failed.
+            const QStringList command = expandCommand(exec, {}, {}, 0);
             const QString tryExec = fields.value("TryExec");
-            if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
+            const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
+            if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
                 continue;
-            for (const QString &mime : fields.value("MimeType").split(';', Qt::SkipEmptyParts))
-                m_thumbnailers.insert(mime.trimmed(), exec);
+            for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
+                const QString mime = declared.trimmed();
+                named.insert(mime, exec);
+                if (const QString type = mimes.mimeTypeForName(mime).name(); !type.isEmpty())
+                    aliased.insert(type, exec);
+            }
         }
+        // Within one directory the file that names a type itself wins over one that names an alias of it.
+        m_thumbnailers.insert(aliased);
+        m_thumbnailers.insert(named);
     }
 }
 
@@ -210,6 +263,23 @@ void Thumbnails::keep(const QImage &image, const QString &path, int pixels, cons
     }
 }
 
+QImage Thumbnails::cached(const QString &path) const {
+    const QFileInfo info(path);
+    if (!info.isFile())
+        return {};
+
+    for (const int size : {128, 256, 512, 1024}) {
+        QImageReader reader(cachePath(path, size), "png");
+        const QSize pixels = reader.size();
+        if (!pixels.isValid() || pixels.width() > size || pixels.height() > size)
+            continue;
+        const QImage image = reader.read();
+        if (madeFor(image, info.lastModified()) && image.text("Thumb::URI") == fileUri(path))
+            return image;
+    }
+    return {};
+}
+
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
     const QFileInfo info(path);
     if (!info.isFile())
@@ -227,9 +297,11 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
     // as the grid names it, it goes to the same thumbnailer as its tile.
-    const QString type = mime.endsWith("/*")
+    const QString named = mime.endsWith("/*")
         ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
         : mime;
+    // A file its extension could not name goes to the reader or thumbnailer for what it holds.
+    const QString type = FolderModel::typeByContent(path, named);
     const int pixels = bucketPixels(bucketFor(size));
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
@@ -271,7 +343,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
         attempted = true;
-        return pdfPage(path, pixels);
+        return pdfPage(path, pixels, m_patience);
     }
     return {};
 }
@@ -323,19 +395,13 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+QImage Thumbnails::pdfPage(const QString &path, int pixels, int patience) {
     QTemporaryDir scratch;
     if (!scratch.isValid())
         return {};
     QProcess process;
-    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
-                               path, scratch.filePath("page")});
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+    if (!run(process, "pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to",
+                                   QString::number(pixels), path, scratch.filePath("page")}, patience))
         return {};
     return QImage(scratch.filePath("page.png"));
 }
@@ -367,14 +433,7 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    process.start(program, args);
-    // A broken file must never hang a tile forever.
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+    if (!run(process, program, args, m_patience))
         return {};
     return QImage(output);
 }
@@ -385,8 +444,9 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
 }
 
 // Markers say which round of thumbnailing failed: ones from before a fix
-// (round 2: files on other machines) are tried again once.
-static const QString failedRound = QStringLiteral("2");
+// (round 2: files on other machines; round 3: names holding a %, helpers
+// that never started, camera RAW) are tried again once.
+static const QString failedRound = QStringLiteral("3");
 
 void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
@@ -461,12 +521,31 @@ public:
     void work(bool &told) {
         // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>, or
         // page/<size>/<modified>/<paper>/<ink>/<url-encoded path> for text.
+        // cached/<width>/<height>/<modified>/<url-encoded path> fits a cached preview.
         // The time is only there to tell Qt's own cache apart; load() checks
         // the file's.
         const QStringList parts = m_id.split('/');
         // A tile scrolled away before its turn came shouldn't keep the pool
         // from the ones on screen.
-        if (!m_cancelled && parts.size() >= 5 && parts.at(0) == "sharp") {
+        if (!m_cancelled && parts.size() >= 5 && parts.at(0) == "cached") {
+            const QString path = QUrl::fromPercentEncoding(parts.mid(4).join('/').toUtf8());
+            const QImage thumbnail = m_thumbnails->cached(path);
+            if (!thumbnail.isNull()) {
+                // Read the header for geometry. The full Image still decodes the pixels.
+                QImageReader reader(path);
+                QSize original = reader.size();
+                if (reader.transformation().testFlag(QImageIOHandler::TransformationRotate90))
+                    original.transpose();
+                const QSize viewport(qBound(1, parts.at(1).toInt(), 2048),
+                                     qBound(1, parts.at(2).toInt(), 2048));
+                if (!original.isEmpty()) {
+                    if (original.width() > viewport.width() || original.height() > viewport.height())
+                        original.scale(viewport, Qt::KeepAspectRatio);
+                    m_image = thumbnail.scaled(original.expandedTo(QSize(1, 1)), Qt::IgnoreAspectRatio,
+                                               Qt::SmoothTransformation);
+                }
+            }
+        } else if (!m_cancelled && parts.size() >= 5 && parts.at(0) == "sharp") {
             const int pixels = qBound(256, parts.at(1).toInt(), 8192);
             const QString mime = QUrl::fromPercentEncoding(parts.at(3).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(4).join('/').toUtf8());
@@ -485,8 +564,7 @@ public:
             if (!made.isNull())
                 thumbnails->keep(made, path, pixels, modified);
             return;
-        }
-        if (!m_cancelled && parts.size() >= 6 && parts.at(0) == "page") {
+        } else if (!m_cancelled && parts.size() >= 6 && parts.at(0) == "page") {
             const QString path = QUrl::fromPercentEncoding(parts.mid(5).join('/').toUtf8());
             m_image = Thumbnails::textPage(path, qBound(64, parts.at(1).toInt(), 1024),
                                            QColor::fromString("#" + parts.at(3)), QColor::fromString("#" + parts.at(4)));

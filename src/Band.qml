@@ -26,8 +26,10 @@ MouseArea {
     }
 
     onPressed: (mouse) => {
-        // Presses on an item belong to the item (select, drag it away).
-        if (view.indexAt(mouse.x, mouse.y) >= 0) {
+        // Presses on an item belong to the item (select, drag it away);
+        // the padding around a tile is empty space.
+        const i = view.indexAt(mouse.x, mouse.y)
+        if (i >= 0 && hit(rectOf(i), Qt.rect(mouse.x, mouse.y, 0, 0))) {
             mouse.accepted = false
             return
         }

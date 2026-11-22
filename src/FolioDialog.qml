@@ -57,12 +57,13 @@ FocusScope {
 
             // A title can name a file, and a long name wraps rather than
             // running off the card.
-            Text {
+            FolioText {
                 Layout.fillWidth: true
                 text: dialog.title
+                textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: theme.brightForeground
-                font.pixelSize: 16
+                size: 16
                 font.weight: Font.DemiBold
             }
         }

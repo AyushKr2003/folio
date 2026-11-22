@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
@@ -24,6 +25,7 @@ class FileOps : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool canPaste READ canPaste NOTIFY clipboardChanged)
+    Q_PROPERTY(int cutCount READ cutCount NOTIFY clipboardChanged)
     Q_PROPERTY(QVariantMap clash READ clash NOTIFY clashChanged)
     Q_PROPERTY(QString undoName READ undoName NOTIFY historyChanged)
 
@@ -33,6 +35,9 @@ public:
 
     QString busy() const { return m_busy; }
     bool canPaste() const;
+    // How many items the clipboard holds cut, and whether `path` is one or inside one, which the views draw dimmer.
+    int cutCount() const { return int(m_cut.size()); }
+    Q_INVOKABLE bool isCut(const QString &path) const;
 
     // How far a piece of work has got, and whether it's been asked to stop:
     // the worker counts and checks, the UI thread shows and asks.
@@ -117,6 +122,12 @@ public:
     // Unpacks each archive beside itself: an archive of one item gives
     // that item, one of several a folder named after the archive.
     Q_INVOKABLE void extract(const QStringList &paths);
+    // Whether these are all files of one's own that can be made to run or
+    // not: never a folder, whose x means something else, nor a link.
+    Q_INVOKABLE bool canSetExecutable(const QStringList &paths) const;
+    // Whether each of them runs as a program already.
+    Q_INVOKABLE bool executable(const QStringList &paths) const;
+    Q_INVOKABLE void setExecutable(const QStringList &paths, bool on);
 
     Q_INVOKABLE void trash(const QStringList &paths);
 
@@ -277,6 +288,8 @@ signals:
     void busyChanged();
     void clipboardChanged();
     void failed(const QString &message);
+    // Files whose permissions setExecutable changed.
+    void modesChanged(const QStringList &paths);
     void notice(const QString &notice);
     void clashChanged();
     void historyChanged();
@@ -290,6 +303,8 @@ signals:
     // An item renamed from `from` to `to`, by Rename or by undoing or
     // redoing one, for the sidebar's pins and hidden folders to follow.
     void renamed(const QString &from, const QString &to);
+    // A new folder was made in `folder`, named `name`, for naming right away.
+    void folderCreated(const QString &folder, const QString &name);
 
 private:
     void setBusy(const QString &busy);
@@ -338,6 +353,8 @@ private:
                       const QString &stopped, const std::function<void(QProcess *, int)> &finished);
 
     QString m_busy;
+    // The clipboard's cut items, read once each time it changes.
+    QSet<QString> m_cut;
     std::shared_ptr<Job> m_job;
     // The lane this pane's work under way is counted in.
     std::optional<Lane> m_lane;

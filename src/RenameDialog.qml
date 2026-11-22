@@ -44,11 +44,12 @@ FolioDialog {
     }
     // Aligned explicitly, so that it's mirrored: a problem that starts with
     // a file name would otherwise follow the name's script.
-    Text {
+    FolioText {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignLeft
         visible: dialog.problem.length > 0
         text: dialog.problem
+        textFormat: Text.PlainText
         color: theme.red
         wrapMode: Text.Wrap
     }
