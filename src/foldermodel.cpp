@@ -7,6 +7,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
+#include <QRegularExpression>
+#include <QTimeZone>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -16,9 +18,15 @@
 #include <QMimeDatabase>
 #include <QtConcurrent>
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <deque>
 #include <numeric>
+#include <optional>
 #include <vector>
 #include <tuple>
+#include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 
 FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
@@ -107,8 +115,19 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
 void FolderModel::setEntries(const QVector<Entry> &entries) {
     beginResetModel();
     m_entries = entries;
+    m_pathIndexDirty = true;
     endResetModel();
     emit countChanged();
+}
+
+void FolderModel::ensurePathIndex() const {
+    if (!m_pathIndexDirty)
+        return;
+    m_pathIndex.clear();
+    m_pathIndex.reserve(m_entries.size());
+    for (int row = 0; row < m_entries.size(); ++row)
+        m_pathIndex.insert(m_entries[row].path, row);
+    m_pathIndexDirty = false;
 }
 
 void FolderModel::clearEntries() {
@@ -262,60 +281,272 @@ void FolderModel::setPath(const QString &path) {
     reload();
 }
 
+namespace {
+
+// Pre-compiled representation of a file chooser filter so filtering a folder
+// of thousands of files compiles each glob once and checks MIME inheritance
+// at most once per unique MIME type.
+struct CompiledFilter {
+    bool empty = true;
+    bool matchAll = false;
+    bool needsMime = false;
+    QList<QRegularExpression> nameGlobs;
+    QStringList mimeGroups;
+    QStringList mimeTypes;
+    mutable QHash<QString, bool> mimeCache;
+
+    explicit CompiledFilter(const QStringList &filter) : empty(filter.isEmpty()) {
+        for (const QString &pattern : filter) {
+            if (!pattern.contains(QLatin1Char('/'))) {
+                nameGlobs.push_back(QRegularExpression::fromWildcard(pattern, Qt::CaseInsensitive));
+            } else if (pattern == QLatin1String("*/*")) {
+                matchAll = true;
+            } else if (pattern.endsWith(QLatin1String("/*"))) {
+                mimeGroups.push_back(pattern.chopped(1));
+                needsMime = true;
+            } else {
+                mimeTypes.push_back(pattern);
+                needsMime = true;
+            }
+        }
+    }
+
+    bool matches(const FolderModel::Entry &entry) const {
+        if (empty || matchAll || entry.isDir)
+            return true;
+        if (!nameGlobs.isEmpty()) {
+            const qsizetype slash = entry.path.lastIndexOf(QLatin1Char('/'));
+            const QStringView name = slash >= 0 ? QStringView(entry.path).mid(slash + 1) : QStringView(entry.path);
+            for (const QRegularExpression &re : nameGlobs)
+                if (re.matchView(name).hasMatch())
+                    return true;
+        }
+        if (!needsMime)
+            return false;
+        if (const auto it = mimeCache.constFind(entry.mime); it != mimeCache.cend())
+            return *it;
+        bool ok = false;
+        for (const QString &group : mimeGroups) {
+            if (entry.mime.startsWith(group)) {
+                ok = true;
+                break;
+            }
+        }
+        if (!ok) {
+            const QMimeType type = QMimeDatabase().mimeTypeForName(entry.mime);
+            for (const QString &group : mimeGroups) {
+                for (const QString &parent : type.allAncestors()) {
+                    if (parent.startsWith(group)) {
+                        ok = true;
+                        break;
+                    }
+                }
+                if (ok)
+                    break;
+            }
+            if (!ok) {
+                for (const QString &pattern : mimeTypes) {
+                    if (type.inherits(pattern)) {
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+        }
+        mimeCache.insert(entry.mime, ok);
+        return ok;
+    }
+};
+
+// Reads shared-mime-info's globs2 files once so simple single-extension
+// filenames (like photo.jpg or main.cpp) can be resolved from a per-thread
+// extension cache without calling QMimeDatabase's glob matcher on every file,
+// while literal names (CMakeLists.txt, Makefile), compound extensions
+// (*.tar.gz) and special wildcard globs still fall through to QMimeDatabase.
+struct SpecialGlobs {
+    bool available = false;
+    QSet<QString> literals;
+    QStringList prefixes;
+    QSet<QString> wildcardExts;
+    QList<QRegularExpression> extraRegexes;
+
+    SpecialGlobs() {
+        const QStringList files = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation,
+                                                            QStringLiteral("mime/globs2"));
+        for (const QString &filePath : files) {
+            QFile file(filePath);
+            if (!file.open(QIODevice::ReadOnly))
+                continue;
+            available = true;
+            while (!file.atEnd()) {
+                const QByteArray raw = file.readLine().trimmed();
+                if (raw.isEmpty() || raw.startsWith('#'))
+                    continue;
+                const qsizetype c1 = raw.indexOf(':');
+                const qsizetype c2 = c1 >= 0 ? raw.indexOf(':', c1 + 1) : -1;
+                if (c2 < 0)
+                    continue;
+                const qsizetype c3 = raw.indexOf(':', c2 + 1);
+                const QString pattern = QString::fromUtf8(
+                    c3 >= 0 ? raw.mid(c2 + 1, c3 - c2 - 1) : raw.mid(c2 + 1));
+                if (pattern.isEmpty())
+                    continue;
+                // Simple *.ext pattern (single dot, no extra wildcards).
+                if (pattern.startsWith(QLatin1String("*."))) {
+                    const QStringView ext = QStringView(pattern).mid(2);
+                    const bool plainExt = !ext.isEmpty() && !ext.contains(QLatin1Char('.'))
+                                          && !ext.contains(QLatin1Char('*')) && !ext.contains(QLatin1Char('?'))
+                                          && !ext.contains(QLatin1Char('['));
+                    if (plainExt)
+                        continue;
+                    // Compound extension like *.tar.gz is already excluded by the single-dot check.
+                    if (ext.contains(QLatin1Char('.')))
+                        continue;
+                    extraRegexes.push_back(QRegularExpression::fromWildcard(pattern, Qt::CaseInsensitive));
+                    continue;
+                }
+                const bool hasWildcard = pattern.contains(QLatin1Char('*')) || pattern.contains(QLatin1Char('?'))
+                                         || pattern.contains(QLatin1Char('['));
+                if (!hasWildcard) {
+                    literals.insert(pattern.toLower());
+                } else if (pattern.endsWith(QLatin1Char('*')) && pattern.indexOf(QLatin1Char('*')) == pattern.size() - 1
+                           && !pattern.contains(QLatin1Char('?')) && !pattern.contains(QLatin1Char('['))) {
+                    prefixes.push_back(pattern.chopped(1).toLower());
+                } else {
+                    const qsizetype dot = pattern.lastIndexOf(QLatin1Char('.'));
+                    if (dot >= 0) {
+                        const QString ext = pattern.mid(dot + 1);
+                        if (!ext.isEmpty() && !ext.contains(QLatin1Char('*')) && !ext.contains(QLatin1Char('?'))
+                            && !ext.contains(QLatin1Char('['))) {
+                            wildcardExts.insert(ext.toLower());
+                            continue;
+                        }
+                    }
+                    // Patterns like *~, *%, *,v only match non-alphanumeric tails.
+                    extraRegexes.push_back(QRegularExpression::fromWildcard(pattern, Qt::CaseInsensitive));
+                }
+            }
+        }
+    }
+};
+
+const SpecialGlobs &specialGlobs() {
+    static const SpecialGlobs globs;
+    return globs;
+}
+
+bool isSimpleExtCandidate(const QString &name, qsizetype dot, const QString &ext, const SpecialGlobs &globs) {
+    if (!globs.available || dot <= 0 || ext.isEmpty())
+        return false;
+    // Any earlier dot could match a compound glob (*.tar.gz, *.d.ts).
+    if (QStringView(name).left(dot).contains(QLatin1Char('.')))
+        return false;
+    for (const QChar c : ext)
+        if (!((c >= QLatin1Char('a') && c <= QLatin1Char('z')) || (c >= QLatin1Char('A') && c <= QLatin1Char('Z'))
+              || (c >= QLatin1Char('0') && c <= QLatin1Char('9'))))
+            return false;
+    const QString lowerExt = ext.toLower();
+    if (globs.wildcardExts.contains(lowerExt))
+        return false;
+    const QString lower = name.toLower();
+    if (globs.literals.contains(lower))
+        return false;
+    for (const QString &prefix : globs.prefixes)
+        if (lower.startsWith(prefix))
+            return false;
+    for (const QRegularExpression &re : globs.extraRegexes)
+        if (re.match(name).hasMatch())
+            return false;
+    return true;
+}
+
+std::pair<QString, QString> mimeAndKindForName(const QString &name, const QMimeDatabase &mimes,
+                                               qsizetype dot, const QString &ext) {
+    const SpecialGlobs &globs = specialGlobs();
+    if (isSimpleExtCandidate(name, dot, ext, globs)) {
+        thread_local QHash<QString, std::pair<QString, QString>> extCache;
+        if (const auto it = extCache.constFind(ext); it != extCache.cend())
+            return *it;
+        const QString mime = mimes.mimeTypeForFile(QLatin1String("x.") + ext, QMimeDatabase::MatchExtension).name();
+        const QString kind = FolderModel::kindForMime(mime);
+        const std::pair<QString, QString> result{mime, kind};
+        if (extCache.size() > 4096)
+            extCache.clear();
+        extCache.insert(ext, result);
+        return result;
+    }
+    const QString mime = mimes.mimeTypeForFile(name, QMimeDatabase::MatchExtension).name();
+    return {mime, FolderModel::kindForMime(mime)};
+}
+
+FolderModel::Entry entryFromStat(const QString &name, const QString &fullPath, const struct stat *st,
+                                 const QMimeDatabase &mimes) {
+    FolderModel::Entry e;
+    e.name = name;
+    e.path = fullPath;
+    e.isDir = st && S_ISDIR(st->st_mode);
+    e.size = (!st || e.isDir) ? 0 : qint64(st->st_size);
+    if (st)
+        e.modified = QDateTime::fromMSecsSinceEpoch(qint64(st->st_mtim.tv_sec) * 1000LL
+                                                    + qint64(st->st_mtim.tv_nsec) / 1000000LL,
+                                                    QTimeZone::UTC);
+    if (e.isDir) {
+        e.mime = QStringLiteral("inode/directory");
+        e.kind = QStringLiteral("folder");
+    } else {
+        const qsizetype dot = name.lastIndexOf(QLatin1Char('.'));
+        const QString ext = dot >= 0 ? name.mid(dot + 1) : QString();
+        auto [mime, kind] = mimeAndKindForName(name, mimes, dot, ext);
+        e.mime = std::move(mime);
+        e.kind = std::move(kind);
+        e.extension = ext.toUpper();
+    }
+    return e;
+}
+
+} // namespace
+
 bool FolderModel::fits(const QStringList &filter, const Entry &entry) {
     if (filter.isEmpty() || entry.isDir)
         return true;
-    // From the path: in search results the name is the path from where the
-    // search started.
-    const QString name = entry.path.section('/', -1);
-    const QMimeType type = QMimeDatabase().mimeTypeForName(entry.mime);
-    for (const QString &pattern : filter) {
-        if (!pattern.contains('/')) {
-            if (QDir::match(QStringList{pattern}, name))
-                return true;
-        } else if (pattern == "*/*") {
-            return true;
-        } else if (pattern.endsWith("/*")) {
-            const QString group = pattern.chopped(1);
-            if (entry.mime.startsWith(group))
-                return true;
-            for (const QString &parent : type.allAncestors())
-                if (parent.startsWith(group))
-                    return true;
-        } else if (type.inherits(pattern)) {
-            return true;
-        }
+    thread_local QStringList lastFilter;
+    thread_local std::optional<CompiledFilter> compiled;
+    if (!compiled || lastFilter != filter) {
+        lastFilter = filter;
+        compiled.emplace(filter);
     }
-    return false;
+    return compiled->matches(entry);
 }
 
 QString FolderModel::kindForMime(const QString &mime) {
-    if (mime == "inode/directory") return "folder";
-    if (mime == "application/pdf") return "pdf";
-    if (mime.startsWith("image/")) return "image";
-    if (mime.startsWith("video/")) return "video";
-    if (mime.startsWith("audio/")) return "audio";
+    if (mime == "inode/directory") return QStringLiteral("folder");
+    if (mime == "application/pdf") return QStringLiteral("pdf");
+    if (mime.startsWith("image/")) return QStringLiteral("image");
+    if (mime.startsWith("video/")) return QStringLiteral("video");
+    if (mime.startsWith("audio/")) return QStringLiteral("audio");
+    if (mime.startsWith("text/")) return QStringLiteral("text");
+    // Per-thread cache avoids taking QMimeDatabase's global lock on every file
+    // in a large folder across concurrent listing threads.
+    thread_local QHash<QString, QString> cache;
+    if (const auto it = cache.constFind(mime); it != cache.cend())
+        return *it;
+    QString kind = QStringLiteral("other");
     // Anything readable as text (source code, config, JSON, Ruby, ...) is
     // text, whatever its own type is called.
     static const QMimeDatabase types;
-    if (mime.startsWith("text/") || types.mimeTypeForName(mime).inherits("text/plain"))
-        return "text";
-    static const QStringList archives{"application/zip", "application/x-tar", "application/gzip",
-                                      "application/x-xz", "application/zstd", "application/x-7z-compressed",
-                                      "application/x-compressed-tar", "application/x-zstd-compressed-tar",
-                                      "application/vnd.rar", "application/x-iso9660-image"};
-    // Every compressed tar too: .tar.xz, .tar.bz2, .tar.lz4 and the rest.
-    if (archives.contains(mime) || mime.endsWith("-compressed-tar")) return "archive";
-    return "other";
-}
-
-// Everything in a folder (sockets and broken links too), the hidden only
-// when they're shown.
-static QDir::Filters entryFilters(bool showHidden) {
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
-    return filters;
+    if (types.mimeTypeForName(mime).inherits("text/plain")) {
+        kind = QStringLiteral("text");
+    } else {
+        static const QStringList archives{"application/zip", "application/x-tar", "application/gzip",
+                                          "application/x-xz", "application/zstd", "application/x-7z-compressed",
+                                          "application/x-compressed-tar", "application/x-zstd-compressed-tar",
+                                          "application/vnd.rar", "application/x-iso9660-image"};
+        // Every compressed tar too: .tar.xz, .tar.bz2, .tar.lz4 and the rest.
+        if (archives.contains(mime) || mime.endsWith("-compressed-tar"))
+            kind = QStringLiteral("archive");
+    }
+    cache.insert(mime, kind);
+    return kind;
 }
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
@@ -326,25 +557,42 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
         return listRecent(recentFile(), showHidden, 200, stop);
     }
     QVector<Entry> entries;
-    QDir dir(path);
-    if (!dir.exists()) {
-        if (error) *error = QObject::tr("This folder no longer exists.");
-        return entries;
-    }
-    if (!QFileInfo(path).isReadable()) {
-        if (error) *error = QObject::tr("You don't have permission to open this folder.");
+    const QString absPath = QFileInfo(path).absoluteFilePath();
+    DIR *dir = ::opendir(QFile::encodeName(absPath).constData());
+    if (!dir) {
+        if (error) {
+            if (errno == EACCES || errno == EPERM)
+                *error = QObject::tr("You don't have permission to open this folder.");
+            else
+                *error = QObject::tr("This folder no longer exists.");
+        }
         return entries;
     }
 
+    const int dfd = ::dirfd(dir);
+    const QString prefix = absPath.endsWith(QLatin1Char('/')) ? absPath : absPath + QLatin1Char('/');
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    QDirIterator it(path, entryFilters(showHidden));
-    while (it.hasNext()) {
-        if (stop && stop())
+    while (dirent *ent = ::readdir(dir)) {
+        const char *raw = ent->d_name;
+        if (raw[0] == '.') {
+            if (raw[1] == '\0' || (raw[1] == '.' && raw[2] == '\0'))
+                continue;
+            if (!showHidden)
+                continue;
+        }
+        if (stop && stop()) {
+            ::closedir(dir);
             return {};
-        entries.push_back(entryFor(it.nextFileInfo(), mimes));
+        }
+        struct stat st;
+        const bool ok = ::fstatat(dfd, raw, &st, 0) == 0
+                        || ::fstatat(dfd, raw, &st, AT_SYMLINK_NOFOLLOW) == 0;
+        const QString name = QFile::decodeName(raw);
+        entries.push_back(entryFromStat(name, prefix + name, ok ? &st : nullptr, mimes));
     }
+    ::closedir(dir);
     sortEntries(entries, sort, locale);
     return entries;
 }
@@ -417,10 +665,14 @@ struct SearchFilter {
         text = words.join(QLatin1Char(' ')).trimmed();
     }
 
-    bool matches(const QFileInfo &info) const {
-        const QString name = info.fileName();
-        if (!extensions.isEmpty() && (info.isDir() || !extensions.contains(info.suffix().toLower())))
-            return false;
+    bool matchesName(const QString &name, bool isDir) const {
+        if (!extensions.isEmpty()) {
+            if (isDir)
+                return false;
+            const qsizetype dot = name.lastIndexOf(QLatin1Char('.'));
+            if (dot < 0 || !extensions.contains(name.mid(dot + 1).toLower()))
+                return false;
+        }
         return name.contains(text, Qt::CaseInsensitive);
     }
 };
@@ -441,43 +693,96 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
             since.restart();
         }
     };
+    const QString absRoot = QFileInfo(root).absoluteFilePath();
     struct stat top;
-    if (::stat(QFile::encodeName(root).constData(), &top) != 0)
+    if (::stat(QFile::encodeName(absRoot).constData(), &top) != 0)
         return entries;
-    const QDir::Filters filters = entryFilters(showHidden);
     const SearchFilter wanted(query);
+    const CompiledFilter compiledFilter(filter);
 
     // Breadth first, so what's near comes before what's deep when there are
     // more matches than the limit.
     QMimeDatabase mimes;
-    const QDir base(root);
-    QStringList folders{root};
-    while (!folders.isEmpty() && entries.size() < limit) {
+    const QString rootPrefix = absRoot.endsWith(QLatin1Char('/')) ? absRoot : absRoot + QLatin1Char('/');
+    std::deque<QString> folders{absRoot};
+    while (!folders.empty() && entries.size() < limit) {
         if (stop && stop())
             return {};
-        QDirIterator it(folders.takeFirst(), filters);
-        while (it.hasNext()) {
-            if (stop && stop())
+        const QString currentDir = std::move(folders.front());
+        folders.pop_front();
+        DIR *dir = ::opendir(QFile::encodeName(currentDir).constData());
+        if (!dir)
+            continue;
+        const int dfd = ::dirfd(dir);
+        const QString dirPrefix = currentDir.endsWith(QLatin1Char('/')) ? currentDir : currentDir + QLatin1Char('/');
+        while (dirent *ent = ::readdir(dir)) {
+            const char *raw = ent->d_name;
+            if (raw[0] == '.') {
+                if (raw[1] == '\0' || (raw[1] == '.' && raw[2] == '\0'))
+                    continue;
+                if (!showHidden)
+                    continue;
+            }
+            if (stop && stop()) {
+                ::closedir(dir);
                 return {};
-            const QFileInfo info = it.nextFileInfo();
-            if (entries.size() < limit && wanted.matches(info)) {
-                Entry e = entryFor(info, mimes);
-                e.name = base.relativeFilePath(e.path);
-                // Only what fits a file chooser's filter uses up the limit.
-                if (fits(filter, e))
-                    entries.push_back(e);
+            }
+            // Fast path: use d_type to skip stat() on every non-matching file.
+            const unsigned char dtype = ent->d_type;
+            const bool definitelyDir = dtype == DT_DIR;
+            const bool definitelyNonDir = dtype != DT_DIR && dtype != DT_LNK && dtype != DT_UNKNOWN;
+            const QString name = QFile::decodeName(raw);
+
+            // Check name match before stating, when we know it's not a dir (or no ext: filter).
+            bool statLoaded = false;
+            bool lstatLoaded = false;
+            struct stat st{};
+            struct stat lst{};
+            const auto loadStat = [&] {
+                if (!statLoaded) {
+                    statLoaded = ::fstatat(dfd, raw, &st, 0) == 0
+                                 || ::fstatat(dfd, raw, &st, AT_SYMLINK_NOFOLLOW) == 0;
+                }
+                return statLoaded;
+            };
+            const auto loadLstat = [&] {
+                if (!lstatLoaded)
+                    lstatLoaded = ::fstatat(dfd, raw, &lst, AT_SYMLINK_NOFOLLOW) == 0;
+                return lstatLoaded;
+            };
+
+            if (entries.size() < limit) {
+                bool candidate = false;
+                if (definitelyNonDir) {
+                    candidate = wanted.matchesName(name, false);
+                } else if (definitelyDir) {
+                    candidate = wanted.matchesName(name, true);
+                } else {
+                    const bool isDir = loadStat() && S_ISDIR(st.st_mode);
+                    candidate = wanted.matchesName(name, isDir);
+                }
+                if (candidate) {
+                    const QString fullPath = dirPrefix + name;
+                    const bool ok = loadStat();
+                    Entry e = entryFromStat(name, fullPath, ok ? &st : nullptr, mimes);
+                    e.name = fullPath.startsWith(rootPrefix) ? fullPath.mid(rootPrefix.size()) : fullPath;
+                    // Only what fits a file chooser's filter uses up the limit.
+                    if (compiledFilter.matches(e))
+                        entries.push_back(std::move(e));
+                }
             }
             // At every entry, not just at matches: a match found early isn't
             // held back by a long stretch of folders with none.
-            tell(false);
+            if (entries.size() > told)
+                tell(false);
             // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
-            struct stat st;
-            if (info.isDir() && !info.isSymLink()
-                && ::lstat(QFile::encodeName(info.absoluteFilePath()).constData(), &st) == 0
-                && st.st_dev == top.st_dev)
-                folders << info.absoluteFilePath();
+            if (definitelyDir || dtype == DT_UNKNOWN) {
+                if (loadLstat() && S_ISDIR(lst.st_mode) && !S_ISLNK(lst.st_mode) && lst.st_dev == top.st_dev)
+                    folders.push_back(dirPrefix + name);
+            }
         }
+        ::closedir(dir);
     }
     tell(true);
     sortEntries(entries, sort, locale);
@@ -528,30 +833,42 @@ struct Order {
 };
 
 void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
+    if (entries.size() <= 1)
+        return;
     // The C locale's keys keep the case its compare ignores.
     if (locale.language() == QLocale::C) {
         std::stable_sort(entries.begin(), entries.end(), before(sort, locale));
         return;
     }
     const QCollator collator = collatorFor(locale);
-    // Each name (and, by kind, extension) made into a key once, so a compare
-    // reads bytes instead of collating both strings again: sorting a folder
-    // of many thousand files collated each name a dozen times and more.
-    std::vector<QCollatorSortKey> names, extensions;
-    names.reserve(entries.size());
-    for (const Entry &e : std::as_const(entries))
-        names.push_back(collator.sortKey(e.name));
-    if (sort == "kind") {
-        extensions.reserve(entries.size());
-        for (const Entry &e : std::as_const(entries))
-            extensions.push_back(collator.sortKey(e.extension));
-    }
     const Order comesBefore(sort);
+    const bool byNameOnly = !comesBefore.newest && !comesBefore.oldest && !comesBefore.size && !comesBefore.kind;
+    // By name, every entry's key is needed up front. By date, size or kind,
+    // compute name keys lazily on ties so sorting a large folder by date or
+    // size skips generating thousands of unused ICU sort keys, while still
+    // computing each key at most once when many entries tie.
+    std::vector<std::optional<QCollatorSortKey>> names(entries.size());
+    if (byNameOnly) {
+        for (qsizetype i = 0; i < entries.size(); ++i)
+            names[i].emplace(collator.sortKey(entries.at(i).name));
+    }
+    QHash<QString, QCollatorSortKey> extKeys;
+    if (comesBefore.kind) {
+        for (const Entry &e : std::as_const(entries))
+            if (!e.isDir && !extKeys.contains(e.extension))
+                extKeys.insert(e.extension, collator.sortKey(e.extension));
+    }
+    const auto nameKey = [&](qsizetype idx) -> const QCollatorSortKey & {
+        if (!names[idx].has_value())
+            names[idx].emplace(collator.sortKey(entries.at(idx).name));
+        return *names[idx];
+    };
     std::vector<qsizetype> order(entries.size());
     std::iota(order.begin(), order.end(), 0);
     std::stable_sort(order.begin(), order.end(), [&](qsizetype i, qsizetype j) {
         return comesBefore(entries.at(i), entries.at(j), [&](bool extension) {
-            return extension ? extensions[i].compare(extensions[j]) : names[i].compare(names[j]);
+            return extension ? extKeys.find(entries.at(i).extension)->compare(*extKeys.find(entries.at(j).extension))
+                             : nameKey(i).compare(nameKey(j));
         });
     });
     QVector<Entry> sorted;
@@ -636,27 +953,81 @@ QString FolderModel::recentFile() {
 }
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {
-    QDir dir(entry.path);
-    const QStringList names = dir.entryList(entryFilters(showHidden), QDir::Name);
-    entry.itemCount = names.size();
+    entry.itemCount = 0;
     entry.peek.clear();
+    DIR *dir = ::opendir(QFile::encodeName(entry.path).constData());
+    if (!dir)
+        return;
 
-    static const QStringList pictures{"jpg", "jpeg", "png", "webp", "gif", "heic", "avif", "jxl"};
-    for (const QString &name : names) {
-        if (pictures.contains(QFileInfo(name).suffix().toLower()))
-            entry.peek << dir.filePath(name);
-        if (entry.peek.size() == 2)
-            break;
+    static const QSet<QString> pictures{QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"),
+                                        QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("heic"),
+                                        QStringLiteral("avif"), QStringLiteral("jxl")};
+    // Single-pass count and top-2 lexicographically smallest picture names,
+    // matching QDir::Name order without allocating or sorting every filename.
+    QString best[2];
+    int found = 0;
+    while (dirent *ent = ::readdir(dir)) {
+        const char *raw = ent->d_name;
+        if (raw[0] == '.') {
+            if (raw[1] == '\0' || (raw[1] == '.' && raw[2] == '\0'))
+                continue;
+            if (!showHidden)
+                continue;
+        }
+        ++entry.itemCount;
+        const char *dot = std::strrchr(raw, '.');
+        if (!dot || dot[1] == '\0')
+            continue;
+        const QString ext = QString::fromLatin1(dot + 1).toLower();
+        if (!pictures.contains(ext))
+            continue;
+        const QString name = QFile::decodeName(raw);
+        if (found == 0) {
+            best[0] = name;
+            found = 1;
+        } else if (found == 1) {
+            if (name < best[0]) {
+                best[1] = std::move(best[0]);
+                best[0] = name;
+            } else {
+                best[1] = name;
+            }
+            found = 2;
+        } else if (name < best[1]) {
+            if (name < best[0]) {
+                best[1] = std::move(best[0]);
+                best[0] = name;
+            } else {
+                best[1] = name;
+            }
+        }
     }
+    ::closedir(dir);
+    const QString prefix = entry.path.endsWith(QLatin1Char('/')) ? entry.path : entry.path + QLatin1Char('/');
+    for (int i = 0; i < found; ++i)
+        entry.peek << prefix + best[i];
 }
 
 int FolderModel::itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop) {
+    DIR *dir = ::opendir(QFile::encodeName(folder).constData());
+    if (!dir)
+        return 0;
     int count = 0;
-    for (QDirIterator it(folder, entryFilters(showHidden)); it.hasNext(); it.next()) {
-        if (stop && stop())
+    while (dirent *ent = ::readdir(dir)) {
+        const char *raw = ent->d_name;
+        if (raw[0] == '.') {
+            if (raw[1] == '\0' || (raw[1] == '.' && raw[2] == '\0'))
+                continue;
+            if (!showHidden)
+                continue;
+        }
+        if (stop && stop()) {
+            ::closedir(dir);
             return -1;
+        }
         ++count;
     }
+    ::closedir(dir);
     return count;
 }
 
@@ -734,8 +1105,9 @@ void FolderModel::reload() {
                      : isTrash(path) ? listTrash(trashDirs, query, showHidden, sort, overtaken, 1000, locale, filter)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
-        if (!isPluginView(path))
-            entries.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
+        const CompiledFilter compiledFilter(filter);
+        if (!isPluginView(path) && !compiledFilter.empty)
+            entries.removeIf([&](const Entry &entry) { return !compiledFilter.matches(entry); });
         // Every folder opened in place, read again with it; one that can't
         // be is told by its error.
         QHash<QString, QVector<Entry>> open;
@@ -749,7 +1121,8 @@ void FolderModel::reload() {
                 unread.insert(folder, why);
                 continue;
             }
-            items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
+            if (!compiledFilter.empty)
+                items.removeIf([&](const Entry &entry) { return !compiledFilter.matches(entry); });
             open.insert(folder, items);
         }
         return std::make_tuple(entries, error, trashDirs, open, unread);
@@ -757,35 +1130,47 @@ void FolderModel::reload() {
 }
 
 void FolderModel::countFolders(quint64 generation) {
+    struct FolderRef {
+        int row;
+        QString path;
+        int count = -1;
+    };
     // Only the folders not counted yet: a listing just read, or one whose
     // counting was overtaken by a re-read (and so remembered without them).
-    QVector<QPair<int, Entry>> folders;
+    QVector<FolderRef> folders;
     for (int row = 0; row < m_entries.size(); ++row)
         if (m_entries[row].isDir && m_entries[row].itemCount < 0)
-            folders.push_back({row, m_entries[row]});
+            folders.push_back({row, m_entries[row].path, -1});
     if (folders.isEmpty())
         return;
 
     const bool showHidden = m_showHidden;
-    auto *watcher = new QFutureWatcher<QVector<QPair<int, Entry>>>(this);
+    auto *watcher = new QFutureWatcher<QVector<FolderRef>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
-        bool updated = false;
-        for (const auto &[row, summary] : watcher->result()) {
-            if (row >= m_entries.size() || m_entries[row].path != summary.path)
+        int first = -1, last = -1;
+        for (const auto &summary : watcher->result()) {
+            if (summary.row >= m_entries.size() || m_entries[summary.row].path != summary.path)
                 continue;
-            m_entries[row].itemCount = summary.itemCount;
-            const QModelIndex at = index(row);
-            emit dataChanged(at, at, {ItemCountRole});
-            updated = true;
+            m_entries[summary.row].itemCount = summary.count;
+            if (first < 0) {
+                first = last = summary.row;
+            } else if (summary.row == last + 1) {
+                last = summary.row;
+            } else {
+                emit dataChanged(index(first), index(last), {ItemCountRole});
+                first = last = summary.row;
+            }
         }
-        // QML re-reads its get() snapshots (the current item, which the
-        // details column shows) on countChanged, and the counts they show
-        // just arrived.
-        if (updated)
+        if (first >= 0) {
+            emit dataChanged(index(first), index(last), {ItemCountRole});
+            // QML re-reads its get() snapshots (the current item, which the
+            // details column shows) on countChanged, and the counts they show
+            // just arrived.
             emit countChanged();
+        }
         remember();
     });
     const auto latest = m_latest;
@@ -796,7 +1181,7 @@ void FolderModel::countFolders(quint64 generation) {
         for (auto &folder : folders) {
             if (overtaken())
                 break;
-            folder.second.itemCount = itemCount(folder.second.path, showHidden, overtaken);
+            folder.count = itemCount(folder.path, showHidden, overtaken);
         }
         return folders;
     }));
@@ -824,9 +1209,35 @@ QVariantMap FolderModel::toMap(const Entry &entry) {
 void FolderModel::setSelected(const QSet<QString> &paths) {
     if (paths == m_selected)
         return;
+    const QSet<QString> previous = std::move(m_selected);
     m_selected = paths;
-    if (!m_entries.isEmpty())
-        emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});
+    if (!m_entries.isEmpty()) {
+        // Emit dataChanged only for rows whose selection actually changed when
+        // moving the cursor or toggling individual items in a large folder.
+        if (previous.size() + m_selected.size() <= 16) {
+            ensurePathIndex();
+            QVector<int> changed;
+            for (const QString &p : previous)
+                if (!m_selected.contains(p))
+                    if (const auto it = m_pathIndex.constFind(p); it != m_pathIndex.cend())
+                        changed.push_back(*it);
+            for (const QString &p : m_selected)
+                if (!previous.contains(p))
+                    if (const auto it = m_pathIndex.constFind(p); it != m_pathIndex.cend())
+                        changed.push_back(*it);
+            std::sort(changed.begin(), changed.end());
+            int i = 0;
+            while (i < changed.size()) {
+                int j = i;
+                while (j + 1 < changed.size() && changed[j + 1] == changed[j] + 1)
+                    ++j;
+                emit dataChanged(index(changed[i]), index(changed[j]), {SelectedRole});
+                i = j + 1;
+            }
+        } else {
+            emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});
+        }
+    }
     emit selectionChanged();
 }
 
@@ -952,11 +1363,14 @@ void FolderModel::searchHere(quint64 generation) {
 }
 
 void FolderModel::insertFound(const QVector<Entry> &found) {
+    if (found.isEmpty())
+        return;
     const auto order = before(m_sort);
     for (const Entry &e : found) {
         const int row = int(std::upper_bound(m_entries.begin(), m_entries.end(), e, order) - m_entries.begin());
         beginInsertRows({}, row, row);
         m_entries.insert(row, e);
+        m_pathIndexDirty = true;
         endInsertRows();
     }
     emit countChanged();
@@ -1019,6 +1433,7 @@ void FolderModel::setExpanded(int row, bool expanded) {
                 selected.remove(m_entries[r].path);
             beginRemoveRows({}, row + 1, end - 1);
             m_entries.remove(row + 1, end - row - 1);
+            m_pathIndexDirty = true;
             endRemoveRows();
             emit countChanged();
             // What was selected inside goes with it.
@@ -1064,14 +1479,20 @@ void FolderModel::setExpanded(int row, bool expanded) {
         if (end > row + 1) {
             beginRemoveRows({}, row + 1, end - 1);
             m_entries.remove(row + 1, end - row - 1);
+            m_pathIndexDirty = true;
             endRemoveRows();
         }
         const QVector<Entry> rows = flatten(items, m_open, m_entries[row].depth + 1);
         if (rows.isEmpty())
             return;
         beginInsertRows({}, row + 1, row + int(rows.size()));
-        for (int i = 0; i < rows.size(); ++i)
-            m_entries.insert(row + 1 + i, rows[i]);
+        const qsizetype oldSize = m_entries.size();
+        const qsizetype insertAt = row + 1;
+        const qsizetype add = rows.size();
+        m_entries.resize(oldSize + add);
+        std::move_backward(m_entries.begin() + insertAt, m_entries.begin() + oldSize, m_entries.end());
+        std::copy(rows.cbegin(), rows.cend(), m_entries.begin() + insertAt);
+        m_pathIndexDirty = true;
         endInsertRows();
         emit countChanged();
         countFolders(generation);
@@ -1079,7 +1500,9 @@ void FolderModel::setExpanded(int row, bool expanded) {
     watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [folder, showHidden, sort, filter, latest, generation, locale] {
         QString error;
         auto items = list(folder, showHidden, sort, &error, [&] { return *latest != generation; }, locale);
-        items.removeIf([&](const Entry &entry) { return !fits(filter, entry); });
+        const CompiledFilter compiledFilter(filter);
+        if (!compiledFilter.empty)
+            items.removeIf([&](const Entry &entry) { return !compiledFilter.matches(entry); });
         return std::make_pair(items, error);
     }));
 }
@@ -1125,10 +1548,8 @@ void FolderModel::collapseAll() {
 }
 
 int FolderModel::indexOfPath(const QString &path) const {
-    for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].path == path)
-            return row;
-    return -1;
+    ensurePathIndex();
+    return m_pathIndex.value(path, -1);
 }
 
 void FolderModel::setLoading(bool loading) {

@@ -232,6 +232,9 @@ private:
 
     QString m_path;
     QVector<Entry> m_entries;
+    mutable QHash<QString, int> m_pathIndex;
+    mutable bool m_pathIndexDirty = true;
+    void ensurePathIndex() const;
     QSet<QString> m_selected;
     // The folders opened in place, by path, and what each was last read to
     // hold. One just opened is in m_expanded until its listing arrives.

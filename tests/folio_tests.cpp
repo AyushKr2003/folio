@@ -1348,6 +1348,37 @@ private slots:
         QCOMPARE(FolderModel::list(dir.path(), true, "name", &error).size(), 5);
     }
 
+    void folderListMatchesEntryForMimeExceptions()
+    {
+        // Fast extension-cached listing in list() must produce the exact same
+        // MIME type, kind and extension as entryFor() for literal filenames,
+        // compound extensions, case-sensitive and uppercase extensions,
+        // dotfiles, backup suffixes and repeated extensions.
+        QTemporaryDir dir;
+        const QStringList files{
+            "CMakeLists.txt", "Makefile", "README", "README.md", "meson.build",
+            "archive.tar.gz", "backup.tar.xz", "icon.svg.gz", "types.d.ts",
+            "main.C", "main.c", "PHOTO.JPG", "photo.jpg", "NOTES.TXT",
+            ".bashrc", "notes.txt~", "page.1", "001.vdr",
+            "a.txt", "b.txt", "c.png", "d.png", "e.cpp", "f.cpp",
+        };
+        for (const QString &name : files)
+            write(dir.filePath(name), "x");
+
+        QString error;
+        const auto listed = FolderModel::list(dir.path(), true, "name", &error);
+        QVERIFY(error.isEmpty());
+        QCOMPARE(listed.size(), files.size());
+
+        const QMimeDatabase mimes;
+        for (const auto &entry : listed) {
+            const auto expected = FolderModel::entryFor(QFileInfo(entry.path), mimes);
+            QCOMPARE(entry.mime, expected.mime);
+            QCOMPARE(entry.kind, expected.kind);
+            QCOMPARE(entry.extension, expected.extension);
+        }
+    }
+
     void folderSortsByTheGivenLanguagesAlphabet()
     {
         // Swedish puts å after z; English sorts it with a.

@@ -10,6 +10,9 @@ MouseArea {
     // The GridView or ListView, and the area each item takes in it.
     required property var view
     required property var rectOf
+    // Optional [first, last] index bounds overlapping `area`, so rubber-band
+    // selection in large folders only checks items near the band.
+    property var rangeFor: null
 
     property point start
     property point end
@@ -39,7 +42,7 @@ MouseArea {
         dragging = false
         const adding = (mouse.modifiers & Qt.AltModifier) !== 0
         before = []
-        if (adding)
+        if (adding && backend.folder.selectedCount > 0)
             for (let i = 0; i < view.count; ++i)
                 if (backend.folder.isSelected(i))
                     before.push(i)
@@ -52,9 +55,12 @@ MouseArea {
         const area = Qt.rect(Math.min(start.x, end.x), Math.min(start.y, end.y),
                              Math.abs(end.x - start.x), Math.abs(end.y - start.y))
         const rows = before.slice()
+        const bounds = rangeFor ? rangeFor(area) : [0, view.count - 1]
+        const first = Math.max(0, bounds[0])
+        const last = Math.min(view.count - 1, bounds[1])
         // An item already in `before` may go in twice; selectRows takes
         // each once.
-        for (let i = 0; i < view.count; ++i)
+        for (let i = first; i <= last; ++i)
             if (hit(rectOf(i), area))
                 rows.push(i)
         backend.folder.selectRows(rows)

@@ -11,5 +11,8 @@ ListView {
     // No cache buffer, here or in the grid: Qt's 16 ms pause before filling
     // one can leave an idle window drawing every refresh.
     cacheBuffer: 0
+    // Rows scrolled out are given to the files scrolled in rather than made
+    // anew, in both the list and the columns.
+    reuseItems: true
     ScrollBar.vertical: FolioScrollBar { }
 }
