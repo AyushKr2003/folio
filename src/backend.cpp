@@ -844,8 +844,12 @@ void Backend::showItem(const QString &path) {
     m_leftBehind = false;
     const QString parent = info.absolutePath();
     if (parent == this->path()) {
-        emit selectRequested(m_pendingSelection);
-        m_pendingSelection.clear();
+        if (!m_folder.loading() && m_folder.indexOf(m_pendingSelection) >= 0) {
+            emit selectRequested(m_pendingSelection);
+            m_pendingSelection.clear();
+        } else if (!m_folder.loading()) {
+            m_folder.reload();
+        }
     } else {
         navigate(parent);
     }

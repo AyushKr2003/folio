@@ -160,6 +160,7 @@ ApplicationWindow {
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                clip: true
 
                 Loader {
                     id: inlineView

@@ -66,8 +66,9 @@ MouseArea {
         backend.folder.selectRows(rows)
         // Dragging past the top or bottom edge scrolls.
         const onScreen = mouse.y - view.contentY
+        const maxScroll = Math.max(0, view.contentHeight - view.height)
         if (onScreen > view.height - 24)
-            view.contentY = Math.min(view.contentHeight - view.height, view.contentY + 16)
+            view.contentY = Math.min(maxScroll, view.contentY + 16)
         else if (onScreen < 24)
             view.contentY = Math.max(0, view.contentY - 16)
     }

@@ -486,6 +486,7 @@ FocusScope {
         // at cold start.
         Loader {
             id: view
+            enabled: !pane.asking
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: pane.viewMode === "grid" ? 24 : pane.viewMode === "list" ? 20 : 0

@@ -6,6 +6,7 @@
 
 #include "backend.h"
 #include "fileops.h"
+#include "foreignparent.h"
 
 static void initQmlCache() {
     Q_INIT_RESOURCE(qmlcache_folio_core);
@@ -45,13 +46,15 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent, Q
     return pane;
 }
 
-Backend *Windows::open(const QString &folder, const QString &select, QObject *chooser) {
+Backend *Windows::open(const QString &folder, const QString &select, QObject *chooser, const QString &parentWindow) {
     Pane main = makePane(m_component, m_engine->rootContext(), chooser);
     auto *window = qobject_cast<QQuickWindow *>(main.item);
     if (!window) {
         release(main);
         return nullptr;
     }
+    if (!parentWindow.isEmpty())
+        ForeignParent::attach(window, parentWindow);
     m_windows.prepend({main, {}});
 
     // Whichever window was used last answers "Show in folder".

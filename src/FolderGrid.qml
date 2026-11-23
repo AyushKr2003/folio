@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Folio 1.0
 
 // The folder as a grid of tiles with real previews.
 GridView {
@@ -70,6 +71,9 @@ GridView {
     // still scroll, which turning the view's interactive off would stop too.
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
+    flickDeceleration: 1800
+    maximumFlickVelocity: 5000
+    KineticScroll { target: grid }
     // No cache buffer, as in FileListView.
     cacheBuffer: 0
     // Tiles scrolled out are reused for incoming items when scrolling large grids.

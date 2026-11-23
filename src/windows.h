@@ -22,9 +22,11 @@ public:
     explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr);
 
     // Opens a window on a folder, or on a file's folder with it selected;
-    // with a `chooser`, a file chooser's window, answering it. Null if the
-    // interface failed to load (the errors are on stderr).
-    Backend *open(const QString &folder, const QString &select = {}, QObject *chooser = nullptr);
+    // with a `chooser`, a file chooser's window, answering it (and attached as
+    // transient-for `parentWindow` when given). Null if the interface failed
+    // to load (the errors are on stderr).
+    Backend *open(const QString &folder, const QString &select = {}, QObject *chooser = nullptr,
+                  const QString &parentWindow = {});
 
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;

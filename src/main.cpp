@@ -16,6 +16,7 @@
 #include "dragpicture.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
+#include "kineticscroll.h"
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
@@ -51,6 +52,7 @@ static void setUp(QGuiApplication &app) {
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
     qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
+    qmlRegisterType<KineticScroll>("Folio", 1, 0, "KineticScroll");
 }
 
 // `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
