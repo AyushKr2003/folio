@@ -10557,6 +10557,136 @@ private slots:
         window->close();
     }
 
+    void previewPaneSwapsImagesWithoutBlankFlashOrLayoutJump()
+    {
+        QTemporaryDir dir;
+        const QString a = dir.filePath("a.png"), b = dir.filePath("b.png");
+        QImage imgA(320, 240, QImage::Format_RGB32);
+        imgA.fill(Qt::red);
+        QVERIFY(imgA.save(a, "PNG"));
+        QImage imgB(400, 300, QImage::Format_RGB32);
+        imgB.fill(Qt::blue);
+        QVERIFY(imgB.save(b, "PNG"));
+
+        const auto makeItem = [](const QString &p) {
+            const QFileInfo info(p);
+            return QVariantMap{{"path", p}, {"name", info.fileName()}, {"isDir", false}, {"kind", "image"},
+                               {"mime", "image/png"}, {"size", info.size()}, {"modified", info.lastModified()}};
+        };
+
+        // Backend::describe() caches recent file metadata so revisiting an image
+        // never flashes an empty details map.
+        Backend backend(dir.path());
+        const QVariantMap itemA = makeItem(a), itemB = makeItem(b);
+        backend.describe(itemA);
+        QVERIFY(backend.describing());
+        QTRY_COMPARE(backend.details().value("width").toInt(), 320);
+        QVERIFY(!backend.describing());
+
+        backend.describe(itemB);
+        QTRY_COMPARE(backend.details().value("width").toInt(), 400);
+
+        // Switching back to A populates dimensions synchronously from cache.
+        backend.describe(itemA);
+        QCOMPARE(backend.details().value("width").toInt(), 320);
+        QCOMPARE(backend.details().value("height").toInt(), 240);
+        QVERIFY(!backend.describing());
+
+        // Switching between A and B in PreviewPane keeps a sharp image visible
+        // (no blank flash) and keeps the Open button inside the pane bounds.
+        Theme theme(dir.filePath("theme"));
+        Thumbnails thumbnails(dir.filePath("cache"));
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}, {"dateLocale", ""}});
+        engine.rootContext()->setContextProperty("places", QVariantMap{{"devices", QVariantList()}, {"home", dir.path()}});
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("chooser", static_cast<QObject *>(nullptr));
+        QQmlComponent component(&engine, QUrl("qrc:/FolioUI/PreviewPane.qml"));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+        QQmlComponent hostComp(&engine);
+        hostComp.setData(R"(
+            import QtQuick
+            Window {
+                id: win
+                width: 500; height: 700; visible: true
+                property var currentItem: ({})
+                QtObject {
+                    id: mockPane
+                    property var current: win.currentItem
+                    property bool inTrash: false
+                    property int currentIndex: 0
+                    property var paneBackend: backend
+                    property var paneFileOps: QtObject {
+                        signal modesChanged(var paths)
+                        function appsFor() { return [{ name: "Viewer", id: "v", isDefault: true }, { name: "Other", id: "o", isDefault: false }] }
+                        function defaultAppName() { return "Viewer" }
+                    }
+                }
+                Loader {
+                    id: loader
+                    objectName: "loader"
+                    anchors.fill: parent
+                    source: "qrc:/FolioUI/PreviewPane.qml"
+                    onLoaded: item.folderPane = mockPane
+                }
+            }
+        )", QUrl("file:///PreviewPaneSwapTest.qml"));
+        QVERIFY2(hostComp.isReady(), qPrintable(hostComp.errorString()));
+        std::unique_ptr<QObject> root(hostComp.create());
+        QVERIFY(root);
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(window);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *loader = window->findChild<QQuickItem *>("loader");
+        QVERIFY(loader);
+        auto *pane = loader->property("item").value<QQuickItem *>();
+        QVERIFY(pane);
+
+        root->setProperty("currentItem", itemA);
+        const auto visibleSharpSources = [&] {
+            QStringList sources;
+            for (QQuickItem *child : pane->findChildren<QQuickItem *>()) {
+                if (child->inherits("QQuickImage") && child->isVisible()
+                    && child->property("source").toUrl().toString().contains("/sharp/"))
+                    sources << child->property("source").toUrl().toString();
+            }
+            return sources;
+        };
+        QQuickItem *openBtn = nullptr;
+        for (QQuickItem *child : pane->findChildren<QQuickItem *>()) {
+            if (child->inherits("QQuickAbstractButton") && child->property("text").toString().contains("Viewer")) {
+                openBtn = child;
+                break;
+            }
+        }
+        QVERIFY(openBtn);
+        const auto buttonY = [&] { return openBtn->mapToItem(pane, QPointF(0, 0)).y(); };
+
+        QTRY_VERIFY(visibleSharpSources().size() == 1 && visibleSharpSources().first().contains("a.png"));
+        QTRY_COMPARE(backend.details().value("width").toInt(), 320);
+        const qreal settledButtonY = buttonY();
+
+        // Switch to B, verify B's own sharp image actually appears and the Open
+        // button doesn't jump vertically while details update.
+        root->setProperty("currentItem", itemB);
+        QTRY_VERIFY(visibleSharpSources().size() == 1 && visibleSharpSources().first().contains("b.png"));
+        QTRY_COMPARE(backend.details().value("width").toInt(), 400);
+        QCOMPARE(buttonY(), settledButtonY);
+
+        // Switch back to A: A's sharp image swaps in synchronously (0-frame
+        // swap, no blank flash) and the Open button stays in place inside bounds.
+        root->setProperty("currentItem", itemA);
+        QCOMPARE(visibleSharpSources().size(), 1);
+        QVERIFY(visibleSharpSources().first().contains("a.png"));
+        QCOMPARE(buttonY(), settledButtonY);
+        const QPointF bottomRight = openBtn->mapToItem(pane, QPointF(openBtn->width(), openBtn->height()));
+        QVERIFY2(bottomRight.y() <= pane->height(),
+                 qPrintable(QString("openButton bottom %1 exceeds pane height %2").arg(bottomRight.y()).arg(pane->height())));
+    }
+
 private:
     // Packs `items`, from `folder`, into `archive`, its kind from its name.
     static void pack(const QString &archive, const QString &folder, const QStringList &items)

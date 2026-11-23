@@ -539,19 +539,42 @@ static QString permissionsText(mode_t mode) {
     return QString::fromLatin1(text);
 }
 
+void Backend::setDescribing(bool describing) {
+    if (describing == m_describingNow)
+        return;
+    m_describingNow = describing;
+    emit describingChanged();
+}
+
 void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
+    const QDateTime modified = item.value("modified").toDateTime();
+    const qint64 size = item.value("size").toLongLong();
     const quint64 generation = ++*m_describing;
+    const QString cacheKey = path.startsWith('/') && modified.isValid()
+                                 ? path + '\n' + mime + '\n' + (inTrash ? QLatin1Char('1') : QLatin1Char('0')) + '\n'
+                                       + QString::number(modified.toMSecsSinceEpoch()) + '\n' + QString::number(size)
+                                 : QString();
+    const QVariantMap *cached = !cacheKey.isEmpty() ? m_detailsCache.object(cacheKey) : nullptr;
     // The same item again (its folder re-read) keeps what it shows until
-    // the new reading is in, rather than flickering.
+    // the new reading is in, rather than flickering. A recently described
+    // item shows its cached metadata immediately while refreshing quietly.
     QVariantMap details;
     if (const QString described = path + '\n' + mime; described != m_described) {
         m_described = described;
-        m_details = details;
         m_pluginRows.clear();
+        if (cached) {
+            m_details = *cached;
+            setDescribing(false);
+        } else {
+            m_details = details;
+            setDescribing(path.startsWith('/'));
+        }
         emit detailsChanged();
+    } else if (!path.startsWith('/')) {
+        setDescribing(false);
     }
     // Plugins say things about real files and folders, not trashed ones or
     // a plugin's own items.
@@ -565,13 +588,18 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     // Reading the file waits on its disk, which for a slow mount would hold
     // up moving through files, so it happens off the UI thread.
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details, path, mime]() mutable {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details, path, mime, cacheKey]() mutable {
         watcher->deleteLater();
         if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
+        const bool changed = details != m_details;
         m_details = details;
-        emit detailsChanged();
+        if (!cacheKey.isEmpty())
+            m_detailsCache.insert(cacheKey, new QVariantMap(m_details));
+        setDescribing(false);
+        if (changed)
+            emit detailsChanged();
         // An archive's names, by the type read from what it holds when its
         // name gave none. bsdtar can take seconds, so listings take a
         // thread of their own, and the rest of what's read never waits on one.
@@ -583,11 +611,13 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             return pool;
         }();
         auto *names = new QFutureWatcher<QString>(this);
-        connect(names, &QFutureWatcherBase::finished, this, [this, names, generation] {
+        connect(names, &QFutureWatcherBase::finished, this, [this, names, generation, cacheKey] {
             names->deleteLater();
             if (generation != *m_describing)
                 return;
             m_details.insert("text", names->result());
+            if (!cacheKey.isEmpty())
+                m_detailsCache.insert(cacheKey, new QVariantMap(m_details));
             emit detailsChanged();
         });
         names->setFuture(QtConcurrent::run(listing, [path, latest = m_describing, generation] {

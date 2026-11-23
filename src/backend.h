@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCache>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -37,6 +38,7 @@ class Backend : public QObject {
     // than the one shown (the columns) to look their orders up again.
     Q_PROPERTY(int sortsRevision READ sortsRevision NOTIFY sortsChanged)
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
+    Q_PROPERTY(bool describing READ describing NOTIFY describingChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
@@ -93,6 +95,7 @@ public:
         m_leftBehind = false;
     }
     QVariantMap details() const;
+    bool describing() const { return m_describingNow; }
     Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
     // The system's own name for a type ("JPEG image"), in the language of
     // the moment.
@@ -155,6 +158,7 @@ signals:
     void busyChanged();
     void previewingChanged();
     void detailsChanged();
+    void describingChanged();
     void newWindowRequested(const QString &path);
     void chosen(const QString &path);
     void selectRequested(const QString &name);
@@ -221,6 +225,9 @@ private:
     bool m_closingPreview = false;
     QString m_previewed;
     QVariantMap m_details;
+    QCache<QString, QVariantMap> m_detailsCache{64};
+    bool m_describingNow = false;
+    void setDescribing(bool describing);
     // Whose details they are (the path and its type, as a file can be
     // replaced by a folder of the same name), and the newest describe(),
     // which a reading has to match to be shown, or even to start.

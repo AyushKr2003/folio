@@ -255,6 +255,24 @@ QString Thumbnails::sharpPath(const QString &stem, int pixels, bool alpha) const
 }
 
 QImage Thumbnails::sharpCached(const QString &path, int pixels) const {
+    const QString memKey = path + '\n' + QString::number(pixels);
+    SharpEntry cachedEntry;
+    bool foundMem = false;
+    {
+        std::lock_guard lock(m_sharpMemoryMutex);
+        if (const SharpEntry *entry = m_sharpMemory.object(memKey)) {
+            cachedEntry = *entry;
+            foundMem = true;
+        }
+    }
+    if (foundMem) {
+        const QFileInfo info(path);
+        if (info.isFile() && info.lastModified() == cachedEntry.modified)
+            return cachedEntry.image;
+        std::lock_guard lock(m_sharpMemoryMutex);
+        if (const SharpEntry *entry = m_sharpMemory.object(memKey); entry && entry->modified == cachedEntry.modified)
+            m_sharpMemory.remove(memKey);
+    }
     QString stem = cacheKey(path);
     stem.chop(4);
     const QString jpg = sharpPath(stem, pixels, false);
@@ -269,9 +287,16 @@ QImage Thumbnails::sharpCached(const QString &path, int pixels) const {
     const QDateTime modified = info.lastModified();
     for (const QString &candidate : {jpg, png}) {
         const QFileInfo cached(candidate);
-        if (cached.exists() && cached.lastModified() == modified)
-            if (QImage image(candidate); !image.isNull())
+        if (cached.exists() && cached.lastModified() == modified) {
+            if (QImage image(candidate); !image.isNull()) {
+                const qsizetype bytes = image.sizeInBytes();
+                if (bytes > 0 && bytes <= m_sharpMemory.maxCost()) {
+                    std::lock_guard lock(m_sharpMemoryMutex);
+                    m_sharpMemory.insert(memKey, new SharpEntry{modified, image}, int(bytes));
+                }
                 return image;
+            }
+        }
     }
     return {};
 }
@@ -286,13 +311,29 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
         return {};
     const QDateTime modified = info.lastModified();
     *read = modified;
+    const QString memKey = path + '\n' + QString::number(pixels);
+    const auto rememberMem = [&](const QImage &image) {
+        const qsizetype bytes = image.sizeInBytes();
+        if (!image.isNull() && bytes > 0 && bytes <= m_sharpMemory.maxCost()) {
+            std::lock_guard lock(m_sharpMemoryMutex);
+            m_sharpMemory.insert(memKey, new SharpEntry{modified, image}, int(bytes));
+        }
+    };
+    {
+        std::lock_guard lock(m_sharpMemoryMutex);
+        if (const SharpEntry *entry = m_sharpMemory.object(memKey); entry && entry->modified == modified)
+            return entry->image;
+    }
     QString stem = cacheKey(path);
     stem.chop(4);
     for (const bool alpha : {false, true}) {
         const QFileInfo cached(sharpPath(stem, pixels, alpha));
-        if (cached.exists() && cached.lastModified() == modified)
-            if (QImage image(cached.filePath()); !image.isNull())
+        if (cached.exists() && cached.lastModified() == modified) {
+            if (QImage image(cached.filePath()); !image.isNull()) {
+                rememberMem(image);
                 return image;
+            }
+        }
     }
     if (stop && stop())
         return {};
@@ -319,6 +360,7 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
     if (image.isNull())
         return fallback();
     *fresh = !small;
+    rememberMem(image);
     return image;
 }
 

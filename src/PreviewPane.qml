@@ -77,10 +77,14 @@ Rectangle {
         spacing: 22
         visible: pane.hasItem
 
-        // The picture grows with the room, short of crowding out the facts.
+        // The picture grows with the room, short of crowding out the facts
+        // or pushing the Open button past the bottom of the pane.
         Item {
             Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 120
             Layout.preferredHeight: Math.round(Math.min(width * 0.75, pane.height * 0.55))
+            Layout.maximumHeight: Math.round(Math.min(width * 0.75, pane.height * 0.55))
 
             // Moving quickly through files, each shows at once the small
             // thumbnail its row has already made (soft, but instant), and
@@ -95,12 +99,20 @@ Rectangle {
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
                 source: big.shown ? Format.thumb(pane.item.path, pane.item.mime, 128, pane.item.modified) : ""
-                visible: status === Image.Ready && !big.visible
+                visible: status === Image.Ready && !big.showing
             }
             Timer {
                 id: rest
                 interval: 120
                 onTriggered: big.rest()
+            }
+            // Keeps the previously displayed sharp picture visible briefly
+            // while the next ready picture decodes into the back buffer, so
+            // stepping between images never flashes blank or blurry.
+            Timer {
+                id: holdTimer
+                interval: 60
+                onTriggered: big.holdingOld = false
             }
             Connections {
                 target: pane
@@ -117,11 +129,9 @@ Rectangle {
                     source: big.sourceFor(modelData)
                 }
             }
-            Image {
+            Item {
                 id: big
                 anchors.fill: parent
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit
                 // As many pixels as it's drawn with, in steps, so resizing
                 // the window doesn't read it again at every width.
                 readonly property int pixels: Math.min(8192, Math.ceil(Math.max(width, height) * Screen.devicePixelRatio / 512) * 512)
@@ -143,7 +153,11 @@ Rectangle {
                             }
                     ahead = near
                 }
-                readonly property bool ready: shown && (rested === pane.item.path || ahead.some(item => item.path === pane.item.path))
+                readonly property url wantedSource: shown ? sourceFor(pane.item) : ""
+                readonly property bool alreadyLoaded: wantedSource != ""
+                    && ((slot0.source == wantedSource && slot0.status === Image.Ready)
+                        || (slot1.source == wantedSource && slot1.status === Image.Ready))
+                readonly property bool ready: shown && (alreadyLoaded || rested === pane.item.path || ahead.some(item => item.path === pane.item.path))
                 // A picture as sharp as the column is wide (one Qt can't
                 // read, HEIC, gets the largest thumbnail); anything else the
                 // largest thumbnail there is (1024 pixels: a video's frame, a
@@ -152,10 +166,97 @@ Rectangle {
                     return item.kind === "image" ? Format.sharp(item.path, item.mime, pixels, item.modified)
                                                  : Format.thumb(item.path, item.mime, 1024, item.modified)
                 }
+                readonly property url targetSource: ready ? wantedSource : ""
+                property int shownSlot: 0
+                property bool holdingOld: false
+                readonly property Image frontImage: shownSlot === 0 ? slot0 : slot1
+                readonly property Image backImage: shownSlot === 0 ? slot1 : slot0
+                readonly property bool showing: slot0.visible || slot1.visible
                 // Gave up: no picture of it to be had.
-                readonly property bool failed: status === Image.Error
-                source: ready ? sourceFor(pane.item) : ""
-                visible: status === Image.Ready
+                readonly property bool failed: ready && targetSource != ""
+                    && ((frontImage.source == targetSource && frontImage.status === Image.Error)
+                        || (backImage.source == targetSource && backImage.status === Image.Error))
+
+                function syncTarget() {
+                    if (!shown) {
+                        holdTimer.stop()
+                        holdingOld = false
+                        slot0.source = ""
+                        slot1.source = ""
+                        return
+                    }
+                    if (targetSource == "") {
+                        holdTimer.stop()
+                        holdingOld = false
+                        return
+                    }
+                    if (frontImage.source == targetSource && frontImage.status === Image.Ready) {
+                        holdTimer.stop()
+                        holdingOld = false
+                        return
+                    }
+                    if (backImage.source == targetSource && backImage.status === Image.Ready) {
+                        holdTimer.stop()
+                        holdingOld = false
+                        shownSlot = 1 - shownSlot
+                        return
+                    }
+                    if (backImage.source == targetSource && backImage.status === Image.Error) {
+                        holdTimer.stop()
+                        holdingOld = false
+                        return
+                    }
+                    holdingOld = frontImage.status === Image.Ready && frontImage.source != ""
+                    if (holdingOld)
+                        holdTimer.restart()
+                    else
+                        holdTimer.stop()
+                    backImage.source = targetSource
+                }
+                Component.onCompleted: syncTarget()
+                onTargetSourceChanged: syncTarget()
+                onShownChanged: if (!shown) syncTarget()
+
+                Image {
+                    id: slot0
+                    anchors.fill: parent
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectFit
+                    visible: big.shown && big.ready && big.shownSlot === 0 && status === Image.Ready
+                             && (source == big.targetSource || big.holdingOld)
+                    onStatusChanged: {
+                        if (big.shownSlot !== 0 && source == big.targetSource) {
+                            if (status === Image.Ready) {
+                                holdTimer.stop()
+                                big.holdingOld = false
+                                big.shownSlot = 0
+                            } else if (status === Image.Error) {
+                                holdTimer.stop()
+                                big.holdingOld = false
+                            }
+                        }
+                    }
+                }
+                Image {
+                    id: slot1
+                    anchors.fill: parent
+                    asynchronous: true
+                    fillMode: Image.PreserveAspectFit
+                    visible: big.shown && big.ready && big.shownSlot === 1 && status === Image.Ready
+                             && (source == big.targetSource || big.holdingOld)
+                    onStatusChanged: {
+                        if (big.shownSlot !== 1 && source == big.targetSource) {
+                            if (status === Image.Ready) {
+                                holdTimer.stop()
+                                big.holdingOld = false
+                                big.shownSlot = 1
+                            } else if (status === Image.Error) {
+                                holdTimer.stop()
+                                big.holdingOld = false
+                            }
+                        }
+                    }
+                }
             }
 
             // Text files show their opening lines instead of a picture, archives the names inside.
@@ -243,10 +344,14 @@ Rectangle {
                 size: 12
                 elide: Text.ElideMiddle
             }
-            // When it was made, where the filesystem keeps that.
-            FolioText { visible: !!pane.info.created; text: qsTr("Created"); color: theme.secondaryForeground; size: 12}
+            // When it was made, where the filesystem keeps that. Keep the row's
+            // place while reading a local file so rows below don't jump.
+            readonly property bool localFile: pane.hasItem && !(pane.folderPane && pane.folderPane.inTrash) && !pane.pluginItem
+                                              && pane.item.path.startsWith("/")
+            readonly property bool createdShown: !!pane.info.created || (backend.describing && localFile)
+            FolioText { visible: parent.createdShown; text: qsTr("Created"); color: theme.secondaryForeground; size: 12}
             FolioText {
-                visible: !!pane.info.created
+                visible: parent.createdShown
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.info.created ? Format.stamp(pane.info.created, translator.dateLocale) : ""
@@ -346,9 +451,10 @@ Rectangle {
                     }
                 }
             }
-            FolioText { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; size: 12}
+            readonly property bool dimensionsShown: !!pane.info.width || (backend.describing && pane.hasItem && pane.item.kind === "image")
+            FolioText { visible: parent.dimensionsShown; text: qsTr("Dimensions"); color: theme.secondaryForeground; size: 12}
             FolioText {
-                visible: !!pane.info.width
+                visible: parent.dimensionsShown
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
