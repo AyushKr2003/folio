@@ -155,8 +155,9 @@ public:
     Q_INVOKABLE void newFolder(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
-    // {id, name, isDefault}, the default first.
-    Q_INVOKABLE QVariantList appsFor(const QString &path) const;
+    // {id, name, isDefault}, the default first. When `knownMime` is given,
+    // uses it directly without opening the file on the UI thread.
+    Q_INVOKABLE QVariantList appsFor(const QString &path, const QString &knownMime = {}) const;
     Q_INVOKABLE void openWith(const QString &path, const QString &appId);
     // Makes the app what the file's type opens with from now on.
     Q_INVOKABLE void setDefaultApp(const QString &path, const QString &appId);

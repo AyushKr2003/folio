@@ -39,36 +39,47 @@ QString fileUri(const QString &path) {
 QByteArray withPlainText(const QByteArray &png) {
     if (!png.startsWith("\x89PNG\r\n\x1a\n"))
         return png;
-    QByteArray out = png.left(8);
-    int at = 8;
+    QByteArray out;
+    out.reserve(png.size() + 256);
+    out.append(png.constData(), 8);
+    qsizetype at = 8;
     while (at + 12 <= png.size()) {
         const quint32 length = qFromBigEndian<quint32>(png.constData() + at);
         if (at + 12 + qsizetype(length) > png.size())
             return png;
-        const QByteArray type = png.mid(at + 4, 4);
-        const QByteArray body = png.mid(at + 8, length);
-        if (type == "zTXt") {
-            const int nul = body.indexOf('\0');
-            QByteArray compressed = body.mid(nul + 2);
-            // qUncompress wants the expected length up front; the 4 bytes are a
-            // hint, so give it a generous one.
-            compressed.prepend(QByteArray("\x00\x01\x00\x00", 4));
-            const QByteArray text = qUncompress(compressed);
-            if (nul > 0 && !text.isNull()) {
-                const QByteArray plain = body.left(nul) + '\0' + text;
-                QByteArray chunk(4, 0);
-                qToBigEndian<quint32>(plain.size(), chunk.data());
-                const QByteArray typed = "tEXt" + plain;
-                chunk += typed;
-                QByteArray crc(4, 0);
-                qToBigEndian<quint32>(crc32(0, reinterpret_cast<const Bytef *>(typed.constData()), typed.size()), crc.data());
-                out += chunk + crc;
-                at += 12 + length;
-                continue;
+        const QByteArrayView type(png.constData() + at + 4, 4);
+        if (type == QByteArrayView("zTXt")) {
+            const QByteArrayView body(png.constData() + at + 8, length);
+            const qsizetype nul = body.indexOf('\0');
+            if (nul > 0 && nul + 2 <= body.size()) {
+                QByteArray compressed;
+                compressed.reserve(4 + body.size() - (nul + 2));
+                // qUncompress wants the expected length up front; the 4 bytes are a
+                // hint, so give it a generous one.
+                compressed.append("\x00\x01\x00\x00", 4);
+                compressed.append(body.constData() + nul + 2, body.size() - (nul + 2));
+                const QByteArray text = qUncompress(compressed);
+                if (!text.isNull()) {
+                    const qsizetype plainSize = nul + 1 + text.size();
+                    QByteArray typed;
+                    typed.reserve(4 + plainSize);
+                    typed.append("tEXt", 4);
+                    typed.append(body.constData(), nul);
+                    typed.append('\0');
+                    typed.append(text);
+                    char lenBuf[4], crcBuf[4];
+                    qToBigEndian<quint32>(quint32(plainSize), lenBuf);
+                    qToBigEndian<quint32>(crc32(0, reinterpret_cast<const Bytef *>(typed.constData()), typed.size()), crcBuf);
+                    out.append(lenBuf, 4);
+                    out.append(typed);
+                    out.append(crcBuf, 4);
+                    at += 12 + qsizetype(length);
+                    continue;
+                }
             }
         }
-        out += png.mid(at, 12 + length);
-        at += 12 + length;
+        out.append(png.constData() + at, 12 + qsizetype(length));
+        at += 12 + qsizetype(length);
     }
     return out;
 }
@@ -125,56 +136,67 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
                   : cacheDirectory),
+      m_sharpRoot(QFileInfo(m_cache).absolutePath() + "/folio/sharp/"),
       m_remoteRoot(remoteRoot.isEmpty() ? Mounter::root() : remoteRoot),
-      m_patience(patience) {
-    QStringList directories = thumbnailerDirectories;
-    if (directories.isEmpty()) {
-        // Later directories win, so the user's own thumbnailers override the
-        // system's.
-        QStringList data = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
-        std::reverse(data.begin(), data.end());
-        for (const QString &base : data)
-            directories << base + "/thumbnailers";
-    }
-    QMimeDatabase mimes;
-    for (const QString &directory : directories) {
-        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
-        QHash<QString, QString> named, aliased;
-        QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
-        while (it.hasNext()) {
-            // A tiny desktop-entry reader: QSettings would treat the
-            // semicolons in MimeType and the %-codes in Exec as its own syntax.
-            QFile file(it.next());
-            if (!file.open(QIODevice::ReadOnly))
-                continue;
-            QHash<QString, QString> fields;
-            bool inEntry = false;
-            for (const QByteArray &raw : file.readAll().split('\n')) {
-                const QString line = QString::fromUtf8(raw).trimmed();
-                if (line.startsWith('['))
-                    inEntry = line == "[Thumbnailer Entry]";
-                else if (inEntry && line.contains('=') && !line.startsWith('#'))
-                    fields.insert(line.section('=', 0, 0).trimmed(), line.section('=', 1).trimmed());
-            }
-            const QString exec = fields.value("Exec");
-            // The program Exec runs has to be installed, or a .thumbnailer
-            // file left behind would mark every file it was asked about failed.
-            const QStringList command = expandCommand(exec, {}, {}, 0);
-            const QString tryExec = fields.value("TryExec");
-            const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
-            if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
-                continue;
-            for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
-                const QString mime = declared.trimmed();
-                named.insert(mime, exec);
-                if (const QString type = mimes.mimeTypeForName(mime).name(); !type.isEmpty())
-                    aliased.insert(type, exec);
-            }
+      m_patience(patience),
+      m_thumbnailerDirs(thumbnailerDirectories) {}
+
+void Thumbnails::ensureThumbnailers() const {
+    std::call_once(m_thumbnailersOnce, [this] {
+        QStringList directories = m_thumbnailerDirs;
+        if (directories.isEmpty()) {
+            // Later directories win, so the user's own thumbnailers override the
+            // system's.
+            QStringList data = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+            std::reverse(data.begin(), data.end());
+            for (const QString &base : data)
+                directories << base + "/thumbnailers";
         }
-        // Within one directory the file that names a type itself wins over one that names an alias of it.
-        m_thumbnailers.insert(aliased);
-        m_thumbnailers.insert(named);
-    }
+        QMimeDatabase mimes;
+        for (const QString &directory : directories) {
+            // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
+            QHash<QString, QString> named, aliased;
+            QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
+            while (it.hasNext()) {
+                // A tiny desktop-entry reader: QSettings would treat the
+                // semicolons in MimeType and the %-codes in Exec as its own syntax.
+                QFile file(it.next());
+                if (!file.open(QIODevice::ReadOnly))
+                    continue;
+                QHash<QString, QString> fields;
+                bool inEntry = false;
+                for (const QByteArray &raw : file.readAll().split('\n')) {
+                    const QString line = QString::fromUtf8(raw).trimmed();
+                    if (line.startsWith('['))
+                        inEntry = line == "[Thumbnailer Entry]";
+                    else if (inEntry && line.contains('=') && !line.startsWith('#'))
+                        fields.insert(line.section('=', 0, 0).trimmed(), line.section('=', 1).trimmed());
+                }
+                const QString exec = fields.value("Exec");
+                // The program Exec runs has to be installed, or a .thumbnailer
+                // file left behind would mark every file it was asked about failed.
+                const QStringList command = expandCommand(exec, {}, {}, 0);
+                const QString tryExec = fields.value("TryExec");
+                const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
+                if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
+                    continue;
+                for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
+                    const QString mime = declared.trimmed();
+                    named.insert(mime, exec);
+                    if (const QString type = mimes.mimeTypeForName(mime).name(); !type.isEmpty())
+                        aliased.insert(type, exec);
+                }
+            }
+            // Within one directory the file that names a type itself wins over one that names an alias of it.
+            m_thumbnailers.insert(aliased);
+            m_thumbnailers.insert(named);
+        }
+    });
+}
+
+QString Thumbnails::thumbnailerFor(const QString &mime) const {
+    ensureThumbnailers();
+    return m_thumbnailers.value(mime);
 }
 
 QString Thumbnails::cacheKey(const QString &path) {
@@ -195,12 +217,12 @@ static int bucketPixels(const QString &bucket) {
     return 1024;
 }
 
-QString Thumbnails::cachePath(const QString &path, int size) const {
-    return m_cache + "/" + bucketFor(size) + "/" + cacheKey(path);
+QString Thumbnails::cachePath(const QString &key, int size) const {
+    return m_cache + "/" + bucketFor(size) + "/" + key;
 }
 
-QString Thumbnails::failPath(const QString &path) const {
-    return m_cache + "/fail/folio/" + cacheKey(path);
+QString Thumbnails::failPath(const QString &key) const {
+    return m_cache + "/fail/folio/" + key;
 }
 
 // Kept apart from the shared thumbnails, whose sizes stop at 1024: in
@@ -208,10 +230,8 @@ QString Thumbnails::failPath(const QString &path) const {
 // which reads back in a few milliseconds where the picture itself, a large
 // PNG, takes half a second. Each has the picture's own modification time,
 // so a changed picture is made again.
-QString Thumbnails::sharpPath(const QString &path, int pixels, bool alpha) const {
-    QString key = cacheKey(path);
-    key.chop(4);
-    return QFileInfo(m_cache).absolutePath() + "/folio/sharp/" + QString::number(pixels) + "/" + key + (alpha ? ".png" : ".jpg");
+QString Thumbnails::sharpPath(const QString &stem, int pixels, bool alpha) const {
+    return m_sharpRoot + QString::number(pixels) + "/" + stem + (alpha ? ".png" : ".jpg");
 }
 
 QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, bool *fresh, QDateTime *read) const {
@@ -221,8 +241,10 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
         return {};
     const QDateTime modified = info.lastModified();
     *read = modified;
+    QString stem = cacheKey(path);
+    stem.chop(4);
     for (const bool alpha : {false, true}) {
-        const QFileInfo cached(sharpPath(path, pixels, alpha));
+        const QFileInfo cached(sharpPath(stem, pixels, alpha));
         if (cached.exists() && cached.lastModified() == modified)
             if (QImage image(cached.filePath()); !image.isNull())
                 return image;
@@ -244,14 +266,18 @@ QImage Thumbnails::sharp(const QString &path, const QString &mime, int pixels, b
 }
 
 void Thumbnails::keep(const QImage &image, const QString &path, int pixels, const QDateTime &modified) const {
-    const QString target = sharpPath(path, pixels, image.hasAlphaChannel());
+    QString stem = cacheKey(path);
+    stem.chop(4);
+    const QString target = sharpPath(stem, pixels, image.hasAlphaChannel());
     // Copies of private pictures: only their owner may read them, as with
     // the thumbnails (see save()).
     const QString folder = QFileInfo(target).absolutePath();
-    QDir().mkpath(folder);
-    const auto ownerOnly = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
-    for (const QString &dir : {QFileInfo(folder).absolutePath(), folder})
-        QFile::setPermissions(dir, ownerOnly);
+    if (!QFileInfo::exists(folder)) {
+        QDir().mkpath(folder);
+        const auto ownerOnly = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        for (const QString &dir : {QFileInfo(folder).absolutePath(), folder})
+            QFile::setPermissions(dir, ownerOnly);
+    }
     QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || !image.save(&file, image.hasAlphaChannel() ? "PNG" : "JPG", image.hasAlphaChannel() ? 10 : 90))
         return;
@@ -267,20 +293,26 @@ QImage Thumbnails::cached(const QString &path) const {
     const QFileInfo info(path);
     if (!info.isFile())
         return {};
+    const QString key = cacheKey(path);
+    const QDateTime modified = info.lastModified();
+    const QString uri = fileUri(path);
 
     for (const int size : {128, 256, 512, 1024}) {
-        QImageReader reader(cachePath(path, size), "png");
+        QImageReader reader(cachePath(key, size), "png");
         const QSize pixels = reader.size();
         if (!pixels.isValid() || pixels.width() > size || pixels.height() > size)
             continue;
         const QImage image = reader.read();
-        if (madeFor(image, info.lastModified()) && image.text("Thumb::URI") == fileUri(path))
+        if (madeFor(image, modified) && image.text("Thumb::URI") == uri)
             return image;
     }
     return {};
 }
 
-QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
+QImage Thumbnails::loadNow(const QString &path, const QString &mime, int size, bool *fresh, bool *failed,
+                           QDateTime *modifiedOut) const {
+    *fresh = false;
+    *failed = false;
     const QFileInfo info(path);
     if (!info.isFile())
         return {};
@@ -290,9 +322,11 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         return {};
 
     const QDateTime modified = info.lastModified();
-    if (const QImage image(cachePath(path, size)); madeFor(image, modified))
+    *modifiedOut = modified;
+    const QString key = cacheKey(path);
+    if (const QImage image(cachePath(key, size)); madeFor(image, modified))
         return image;
-    if (failedBefore(path, modified))
+    if (failedBefore(key, modified))
         return {};
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
@@ -308,13 +342,23 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     if (image.isNull()) {
         // Only a reader or thumbnailer that ran and failed is remembered, so
         // one installed later still gets its turn.
-        if (attempted)
-            rememberFailure(path, modified);
+        *failed = attempted;
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
         image = image.scaled(pixels, pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    remember(image, path, size, modified);
+    *fresh = true;
+    return image;
+}
+
+QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
+    bool fresh = false, failed = false;
+    QDateTime modified;
+    const QImage image = loadNow(path, mime, size, &fresh, &failed, &modified);
+    if (fresh)
+        remember(image, path, size, modified);
+    else if (failed)
+        rememberFailure(path, modified);
     return image;
 }
 
@@ -334,16 +378,28 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
                 return image;
         }
     }
-    const QString command = m_thumbnailers.value(mime);
+    const QString command = thumbnailerFor(mime);
     if (!command.isEmpty()) {
         attempted = true;
         return runThumbnailer(command, path, pixels);
     }
     // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
-    // CUPS) draws the first page.
-    if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
-        attempted = true;
-        return pdfPage(path, pixels, m_patience);
+    // CUPS) draws the first page. Cache a found path (verifying it still
+    // exists), never caching a miss so installing Poppler later works at once.
+    if (mime == "application/pdf") {
+        static std::mutex pdftoppmMutex;
+        static QString pdftoppm;
+        QString executable;
+        {
+            std::lock_guard lock(pdftoppmMutex);
+            if (pdftoppm.isEmpty() || !QFileInfo::exists(pdftoppm))
+                pdftoppm = QStandardPaths::findExecutable("pdftoppm");
+            executable = pdftoppm;
+        }
+        if (!executable.isEmpty()) {
+            attempted = true;
+            return pdfPage(path, pixels, m_patience);
+        }
     }
     return {};
 }
@@ -362,7 +418,7 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     if (head.contains('\0'))
         return {};
     QStringDecoder decode(QStringDecoder::Utf8);
-    QString text = decode(head);
+    const QString text = decode(head);
     if (decode.hasError() && head.size() < 4096)
         return {};
 
@@ -384,12 +440,25 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     // Long lines stop at the right margin rather than the page's edge.
     painter.setClipRect(QRectF(margin, 0, size.width() - 2 * margin, size.height()));
     qreal y = margin + metrics.ascent();
-    for (QString row : text.replace("\r\n", "\n").split('\n')) {
-        if (y > size.height() - margin)
-            break;
-        row.replace('\t', "    ");
-        painter.drawText(QPointF(margin, y), row);
+    const qreal limit = size.height() - margin;
+    qsizetype at = 0;
+    while (at <= text.size() && y <= limit) {
+        qsizetype end = text.indexOf(QLatin1Char('\n'), at);
+        const qsizetype next = end < 0 ? text.size() + 1 : end + 1;
+        if (end < 0)
+            end = text.size();
+        if (end > at && text.at(end - 1) == QLatin1Char('\r'))
+            --end;
+        const QStringView slice = QStringView(text).mid(at, end - at);
+        if (slice.contains(QLatin1Char('\t'))) {
+            QString expanded = slice.toString();
+            expanded.replace(QLatin1Char('\t'), QLatin1String("    "));
+            painter.drawText(QPointF(margin, y), expanded);
+        } else {
+            painter.drawText(QPointF(margin, y), slice.toString());
+        }
         y += line;
+        at = next;
     }
     painter.end();
     return page;
@@ -440,7 +509,7 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
 
 void Thumbnails::remember(QImage image, const QString &path, int size, const QDateTime &modified) const {
     image.setText("Software", "folio");
-    save(std::move(image), cachePath(path, size), path, modified);
+    save(std::move(image), cachePath(cacheKey(path), size), path, modified);
 }
 
 // Markers say which round of thumbnailing failed: ones from before a fix
@@ -452,11 +521,11 @@ void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified)
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
     marker.setText("X-Folio::Round", failedRound);
-    save(std::move(marker), failPath(path), path, modified);
+    save(std::move(marker), failPath(cacheKey(path)), path, modified);
 }
 
-bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
-    const QImage marker(failPath(path));
+bool Thumbnails::failedBefore(const QString &key, const QDateTime &modified) const {
+    const QImage marker(failPath(key));
     return madeFor(marker, modified) && marker.text("X-Folio::Round") == failedRound;
 }
 
@@ -473,8 +542,11 @@ bool Thumbnails::madeFor(const QImage &image, const QDateTime &modified) {
 }
 
 void Thumbnails::save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const {
-    QDir().mkpath(QFileInfo(target).absolutePath());
-    QFile::setPermissions(m_cache, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    const QString dir = QFileInfo(target).absolutePath();
+    if (!QFileInfo::exists(dir)) {
+        QDir().mkpath(dir);
+        QFile::setPermissions(m_cache, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+    }
 
     image.setText("Thumb::URI", fileUri(path));
     image.setText("Thumb::MTime", QString::number(modified.toSecsSinceEpoch()));
@@ -569,10 +641,26 @@ public:
             m_image = Thumbnails::textPage(path, qBound(64, parts.at(1).toInt(), 1024),
                                            QColor::fromString("#" + parts.at(3)), QColor::fromString("#" + parts.at(4)));
         } else if (!m_cancelled && parts.size() >= 4) {
-            const int size = parts.at(0).toInt();
+            const int size = qBound(64, parts.at(0).toInt(), 1024);
             const QString mime = QUrl::fromPercentEncoding(parts.at(2).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
-            m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
+            bool fresh = false, failed = false;
+            QDateTime modified;
+            m_image = m_thumbnails->loadNow(path, mime, size, &fresh, &failed, &modified);
+            // Shown first, written to the PNG cache after so tiles never wait
+            // on PNG encoding and disk sync. Nothing of `this` is touched once
+            // finished() is emitted.
+            const QImage made = fresh ? m_image : QImage();
+            const Thumbnails *thumbnails = m_thumbnails;
+            if (m_image.isNull())
+                m_error = QStringLiteral("No thumbnail");
+            told = true;
+            emit finished();
+            if (!made.isNull())
+                thumbnails->remember(made, path, size, modified);
+            else if (failed)
+                thumbnails->rememberFailure(path, modified);
+            return;
         }
         if (m_image.isNull())
             m_error = QStringLiteral("No thumbnail");
@@ -606,6 +694,9 @@ ThumbnailProvider::ThumbnailProvider(const Thumbnails *thumbnails) : m_thumbnail
 // The size comes in the id; no view sets a sourceSize to request one.
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &) {
     auto *response = new ThumbnailResponse(m_thumbnails, id);
-    m_pool.start(response);
+    // Prioritize active previews over grid/row thumbnail backlogs.
+    const int priority = id.startsWith(QLatin1String("cached/")) ? 2
+                       : id.startsWith(QLatin1String("sharp/")) ? 1 : 0;
+    m_pool.start(response, priority);
     return response;
 }

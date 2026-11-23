@@ -18,6 +18,11 @@ Previewer::Previewer(QObject *parent) : Previewer(FileOps::openInDefaultApp, par
 
 Previewer::Previewer(Opener opener, QObject *parent) : QObject(parent), m_opener(std::move(opener)) {}
 
+Previewer::~Previewer() {
+    *m_listing = 0;
+    *m_reading = 0;
+}
+
 QString Previewer::viewerFor(const QString &mime, bool isDir) {
     if (isDir)
         return "folder";
@@ -35,7 +40,11 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
         // Qt decodes the common formats at full size; the rest (HEIC, JPEG
         // XL, raw camera files) go through the installed thumbnailers at the
         // largest size the cache spec has.
-        if (QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
+        static const QSet<QByteArray> supported = [] {
+            const auto list = QImageReader::supportedMimeTypes();
+            return QSet<QByteArray>(list.cbegin(), list.cend());
+        }();
+        if (supported.contains(mime.toLatin1()))
             return "image";
         return "thumbnail";
     }
@@ -43,8 +52,7 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
         return "archive";
     if (mime == "text/markdown")
         return "markdown";
-    const QMimeType type = QMimeDatabase().mimeTypeForName(mime);
-    if (mime.startsWith("text/") || type.inherits("text/plain"))
+    if (FolderModel::kindForMime(mime) == "text")
         return "text";
     return "other";
 }
@@ -195,16 +203,15 @@ void Previewer::start(const QString &path, bool showHidden, const QString &sort)
 
 void Previewer::show(const QString &path) {
     const QString absolute = QFileInfo(path).absoluteFilePath();
-    for (int i = 0; i < m_entries.size(); ++i) {
-        if (m_entries[i].path == absolute) {
-            if (i != m_index)
-                setIndex(i, false);
-            return;
-        }
+    if (const auto it = m_pathIndex.constFind(absolute); it != m_pathIndex.cend()) {
+        if (*it != m_index)
+            setIndex(*it, false);
+        return;
     }
 
     // A file from another folder: show it alone, then fill in its siblings.
     m_entries = {FolderModel::entryFor(QFileInfo(absolute), QMimeDatabase())};
+    m_pathIndex = {{absolute, 0}};
     setIndex(0, false);
     relist();
 }
@@ -213,10 +220,12 @@ void Previewer::relist() {
     if (m_index < 0 || m_index >= m_entries.size())
         return;
     const quint64 generation = ++m_generation;
+    *m_listing = generation;
     const QString folder = QFileInfo(m_entries.at(m_index).path).absolutePath();
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
     const QLocale locale;
+    const auto latest = m_listing;
     auto *watcher = new QFutureWatcher<QVector<FolderModel::Entry>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
@@ -224,20 +233,26 @@ void Previewer::relist() {
             return;
         const auto entries = watcher->result();
         const QString current = m_entries.at(m_index).path;
+        QHash<QString, int> indexByPath;
+        indexByPath.reserve(entries.size());
+        int found = -1;
         for (int i = 0; i < entries.size(); ++i) {
-            if (entries[i].path == current) {
-                // Keep the entry already shown: it has the folder summary.
-                const FolderModel::Entry shown = m_entries.at(m_index);
-                m_entries = entries;
-                m_entries[i] = shown;
-                m_index = i;
-                emit listed();
-                return;
-            }
+            indexByPath.insert(entries[i].path, i);
+            if (entries[i].path == current)
+                found = i;
+        }
+        if (found >= 0) {
+            // Keep the entry already shown: it has the folder summary.
+            const FolderModel::Entry shown = m_entries.at(m_index);
+            m_entries = entries;
+            m_entries[found] = shown;
+            m_pathIndex = std::move(indexByPath);
+            m_index = found;
+            emit listed();
         }
     });
-    watcher->setFuture(QtConcurrent::run([folder, showHidden, sort, locale] {
-        return FolderModel::list(folder, showHidden, sort, nullptr, {}, locale);
+    watcher->setFuture(QtConcurrent::run(&FolderModel::listingPool(), [folder, showHidden, sort, locale, latest, generation] {
+        return FolderModel::list(folder, showHidden, sort, nullptr, [&] { return *latest != generation; }, locale);
     }));
 }
 

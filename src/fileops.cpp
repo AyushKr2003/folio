@@ -2082,6 +2082,67 @@ QVariantList FileOps::foldHandlerRepeats(QVariantList apps) {
     return apps;
 }
 
+// App metadata lookups (g_app_info_get_all, g_app_info_get_all_for_type,
+// g_app_info_get_default_for_type) scan desktop files on disk and run on the
+// UI thread whenever the selection changes in Columns view. Cache them keyed
+// by the mtimes of the config/applications locations and a local epoch bumped
+// by setDefaultApp().
+struct AppCache {
+    QByteArray stamp;
+    QString editorName;
+    bool hasEditorName = false;
+    QHash<QString, QString> defaultNames;
+    QHash<QString, QVariantList> appsByMime;
+};
+
+static quint64 s_appCacheEpoch = 0;
+
+static void appendStatStamp(QByteArray &out, const QString &path) {
+    struct stat st{};
+    if (::stat(QFile::encodeName(path).constData(), &st) == 0) {
+        out += QByteArray::number(qint64(st.st_mtim.tv_sec));
+        out += ':';
+        out += QByteArray::number(qint64(st.st_mtim.tv_nsec));
+        out += ':';
+        out += QByteArray::number(qint64(st.st_size));
+    }
+    out += '|';
+}
+
+static AppCache &appCache() {
+    static AppCache cache;
+    const QString home = QDir::homePath();
+    QByteArray stamp;
+    stamp.reserve(512);
+    stamp += QByteArray::number(s_appCacheEpoch);
+    stamp += '|';
+    stamp += qgetenv("HOME");
+    stamp += '|';
+    stamp += qgetenv("PATH");
+    stamp += '|';
+    stamp += qgetenv("XDG_CONFIG_HOME");
+    stamp += '|';
+    stamp += qgetenv("XDG_DATA_HOME");
+    stamp += '|';
+    stamp += qgetenv("XDG_DATA_DIRS");
+    stamp += '|';
+    appendStatStamp(stamp, home + "/.local/state/omarchy/defaults/editor");
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericConfigLocation))
+        appendStatStamp(stamp, dir + "/mimeapps.list");
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
+        appendStatStamp(stamp, dir + "/applications");
+        appendStatStamp(stamp, dir + "/applications/mimeapps.list");
+    }
+    if (cache.stamp != stamp) {
+        cache.stamp = stamp;
+        cache.editorName.clear();
+        cache.hasEditorName = false;
+        cache.defaultNames.clear();
+        cache.appsByMime.clear();
+    }
+    return cache;
+}
+
 // An app's name, except Omarchy's editor handler, which opens text files in
 // the editor picked under Setup > Default > Editor: it's named after that
 // editor (Visual Studio Code, Neovim), found as the app that runs it, rather
@@ -2090,31 +2151,38 @@ static QString appName(GAppInfo *app) {
     const QString own = QString::fromUtf8(g_app_info_get_name(app));
     if (qstrcmp(g_app_info_get_id(app), "omarchy-launch-editor.desktop") != 0)
         return own;
-    QVariantList visible;
-    GList *all = g_app_info_get_all();
-    for (GList *l = all; l; l = l->next) {
-        auto *info = G_APP_INFO(l->data);
-        if (const char *executable = g_app_info_get_executable(info); executable && g_app_info_should_show(info))
-            visible << QVariantMap{{"executable", QString::fromUtf8(executable)},
-                                   {"name", QString::fromUtf8(g_app_info_get_name(info))}};
+    AppCache &cache = appCache();
+    if (!cache.hasEditorName) {
+        QVariantList visible;
+        GList *all = g_app_info_get_all();
+        for (GList *l = all; l; l = l->next) {
+            auto *info = G_APP_INFO(l->data);
+            if (const char *executable = g_app_info_get_executable(info); executable && g_app_info_should_show(info))
+                visible << QVariantMap{{"executable", QString::fromUtf8(executable)},
+                                       {"name", QString::fromUtf8(g_app_info_get_name(info))}};
+        }
+        g_list_free_full(all, g_object_unref);
+        cache.editorName = FileOps::editorAppName(visible);
+        cache.hasEditorName = true;
     }
-    g_list_free_full(all, g_object_unref);
-    const QString name = FileOps::editorAppName(visible);
-    return name.isEmpty() ? own : name;
+    return cache.editorName.isEmpty() ? own : cache.editorName;
 }
 
 QString FileOps::defaultAppName(const QString &mime) {
     if (mime.isEmpty() || mime == "inode/directory")
         return {};
-    char *type = g_content_type_from_mime_type(mime.toUtf8().constData());
-    if (!type)
-        return {};
-    GAppInfo *app = g_app_info_get_default_for_type(type, FALSE);
-    g_free(type);
-    if (!app)
-        return {};
-    const QString name = appName(app);
-    g_object_unref(app);
+    AppCache &cache = appCache();
+    if (const auto it = cache.defaultNames.constFind(mime); it != cache.defaultNames.cend())
+        return *it;
+    QString name;
+    if (char *type = g_content_type_from_mime_type(mime.toUtf8().constData())) {
+        if (GAppInfo *app = g_app_info_get_default_for_type(type, FALSE)) {
+            name = appName(app);
+            g_object_unref(app);
+        }
+        g_free(type);
+    }
+    cache.defaultNames.insert(mime, name);
     return name;
 }
 
@@ -2155,9 +2223,12 @@ QString FileOps::openInDefaultApp(const QString &path) {
     return problem;
 }
 
-QVariantList FileOps::appsFor(const QString &path) const {
+QVariantList FileOps::appsFor(const QString &path, const QString &knownMime) const {
+    const QString mime = knownMime.isEmpty() ? mimeFor(path) : knownMime;
+    AppCache &cache = appCache();
+    if (const auto it = cache.appsByMime.constFind(mime); it != cache.appsByMime.cend())
+        return *it;
     QVariantList apps;
-    const QString mime = mimeFor(path);
     char *type = g_content_type_from_mime_type(mime.toUtf8().constData());
     if (!type)
         return apps;
@@ -2184,7 +2255,9 @@ QVariantList FileOps::appsFor(const QString &path) const {
     // Named after Neovim, the editor handler and Neovim itself would be two
     // entries of one name: the handler, which follows the picked editor,
     // stands for both.
-    return foldHandlerRepeats(apps);
+    apps = foldHandlerRepeats(apps);
+    cache.appsByMime.insert(mime, apps);
+    return apps;
 }
 
 void FileOps::openWith(const QString &path, const QString &appId) {
@@ -2216,6 +2289,8 @@ void FileOps::setDefaultApp(const QString &path, const QString &appId) {
         emit failed(tr("Couldn't make %1 the default app for %2: %3")
                         .arg(QString::fromUtf8(g_app_info_get_name(G_APP_INFO(app))), QMimeDatabase().mimeTypeForName(mime).comment(),
                              QString::fromUtf8(error ? error->message : "")));
+    else
+        ++s_appCacheEpoch;
     if (error)
         g_error_free(error);
     g_free(type);

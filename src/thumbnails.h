@@ -6,6 +6,7 @@
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
 #include <QThreadPool>
+#include <mutex>
 
 // Thumbnails per the freedesktop thumbnail spec: one shared cache under
 // ~/.cache/thumbnails, keyed by the MD5 of the file's URI and invalidated by
@@ -26,6 +27,12 @@ public:
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
     QImage load(const QString &path, const QString &mime, int size) const;
+    // Like load(), but defers writing the cache or failure marker so the
+    // provider can hand the pixels to QML before encoding PNG to disk.
+    QImage loadNow(const QString &path, const QString &mime, int size, bool *fresh, bool *failed,
+                   QDateTime *modified) const;
+    void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
+    void rememberFailure(const QString &path, const QDateTime &modified) const;
 
     // Read a fresh thumbnail from any standard bucket, smallest first.
     QImage cached(const QString &path) const;
@@ -46,26 +53,28 @@ public:
     // A text file's first lines set on a page in the given colors. Made
     // fresh each time rather than cached, since the colors follow the theme.
     static QImage textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink);
-    QString thumbnailerFor(const QString &mime) const { return m_thumbnailers.value(mime); }
+    QString thumbnailerFor(const QString &mime) const;
 
 private:
-    QString cachePath(const QString &path, int size) const;
-    QString failPath(const QString &path) const;
-    QString sharpPath(const QString &path, int pixels, bool alpha) const;
+    void ensureThumbnailers() const;
+    QString cachePath(const QString &key, int size) const;
+    QString failPath(const QString &key) const;
+    QString sharpPath(const QString &stem, int pixels, bool alpha) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
     static QImage pdfPage(const QString &path, int pixels, int patience);
-    void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
-    void rememberFailure(const QString &path, const QDateTime &modified) const;
-    bool failedBefore(const QString &path, const QDateTime &modified) const;
+    bool failedBefore(const QString &key, const QDateTime &modified) const;
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
     static bool madeFor(const QImage &image, const QDateTime &modified);
 
     QString m_cache;
+    QString m_sharpRoot;
     QString m_remoteRoot;
     int m_patience;
-    QHash<QString, QString> m_thumbnailers;
+    QStringList m_thumbnailerDirs;
+    mutable std::once_flag m_thumbnailersOnce;
+    mutable QHash<QString, QString> m_thumbnailers;
 };
 
 // Serves image://thumb/<size>/<modified>/<mime>/<path> to QML on a thread

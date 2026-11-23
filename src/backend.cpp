@@ -17,6 +17,7 @@
 #include <QStorageInfo>
 #include <QUrl>
 #include <QtConcurrent>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -174,11 +175,50 @@ QString inherited(const QHash<QString, QString> &sorts, QString path) {
     }
     return "name";
 }
+// Cached per settings file and its on-disk stat, so sortFor() doesn't
+// reopen and parse folio.conf on every column or navigation while still
+// picking up changes made by another Folio process (such as the chooser).
+struct SortsCache {
+    QString file;
+    bool existed = false;
+    qint64 mtimeSec = 0;
+    qint64 mtimeNsec = 0;
+    qint64 size = 0;
+    QHash<QString, QString> sorts;
+};
+
+SortsCache &sortsCache() {
+    static SortsCache cache;
+    return cache;
+}
+
+const QHash<QString, QString> &cachedSorts(const QString &file) {
+    static const QString defaultPath = QSettings().fileName();
+    const QString path = file.isEmpty() ? defaultPath : file;
+    struct stat st{};
+    const bool exists = ::stat(QFile::encodeName(path).constData(), &st) == 0;
+    auto &cache = sortsCache();
+    if (cache.file == path && cache.existed == exists
+        && (!exists || (cache.mtimeSec == st.st_mtim.tv_sec && cache.mtimeNsec == st.st_mtim.tv_nsec
+                        && cache.size == st.st_size)))
+        return cache.sorts;
+    cache.file = path;
+    cache.existed = exists;
+    cache.mtimeSec = exists ? st.st_mtim.tv_sec : 0;
+    cache.mtimeNsec = exists ? st.st_mtim.tv_nsec : 0;
+    cache.size = exists ? st.st_size : 0;
+    if (exists) {
+        QSettings settings = sortSettings(file);
+        cache.sorts = readSorts(settings);
+    } else {
+        cache.sorts.clear();
+    }
+    return cache.sorts;
+}
 }
 
 QString Backend::sortFor(const QString &path) {
-    QSettings settings = sortSettings(s_settingsFile);
-    const auto sorts = readSorts(settings);
+    const auto &sorts = cachedSorts(s_settingsFile);
     return sorts.contains(path) ? sorts.value(path) : inherited(sorts, path);
 }
 
@@ -209,6 +249,17 @@ void Backend::rememberSort(const QString &path, const QString &sort) {
     }
     settings.endArray();
     settings.sync();
+    // Update the in-memory cache to match what we just wrote.
+    const QString filePath = settings.fileName();
+    struct stat st{};
+    const bool exists = ::stat(QFile::encodeName(filePath).constData(), &st) == 0;
+    auto &cache = sortsCache();
+    cache.file = filePath;
+    cache.existed = exists;
+    cache.mtimeSec = exists ? st.st_mtim.tv_sec : 0;
+    cache.mtimeNsec = exists ? st.st_mtim.tv_nsec : 0;
+    cache.size = exists ? st.st_size : 0;
+    cache.sorts = std::move(sorts);
 }
 
 void Backend::chooseSort(const QString &sort) {
@@ -562,15 +613,18 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         QVariantMap read;
         if (*latest != generation)
             return read;
-        if (struct stat st; ::stat(QFile::encodeName(path).constData(), &st) == 0)
-            read.insert("permissions", permissionsText(st.st_mode));
+        const QByteArray encoded = QFile::encodeName(path);
+        struct statx stx{};
+        if (::statx(AT_FDCWD, encoded.constData(), 0, STATX_MODE | (inTrash ? 0u : STATX_BTIME), &stx) == 0) {
+            if (stx.stx_mask & STATX_MODE)
+                read.insert("permissions", permissionsText(stx.stx_mode));
+            if (!inTrash && (stx.stx_mask & STATX_BTIME))
+                read.insert("created", QDateTime::fromMSecsSinceEpoch(stx.stx_btime.tv_sec * 1000LL
+                                                                      + stx.stx_btime.tv_nsec / 1000000LL));
+        }
         if (inTrash) {
             read.insert("origin", FileOps::originalPath(path));
             read.insert("deleted", FileOps::deletedAt(path));
-        } else if (const QDateTime born = QFileInfo(path).birthTime(); born.isValid()) {
-            // When the filesystem keeps it (ext4, btrfs, xfs do; some network
-            // shares don't, and then there's no Created).
-            read.insert("created", born);
         }
         // The type read is this file's alone: the pane believes it only for the path it was read from.
         if (unnamed) {
@@ -638,7 +692,18 @@ bool Backend::askPlugins() {
 }
 
 QString Backend::typeName(const QString &mime) {
-    return QMimeDatabase().mimeTypeForName(mime).comment();
+    static QString cachedLocale;
+    static QHash<QString, QString> cache;
+    const QString locale = QLocale().name();
+    if (locale != cachedLocale) {
+        cachedLocale = locale;
+        cache.clear();
+    }
+    if (const auto it = cache.constFind(mime); it != cache.cend())
+        return *it;
+    const QString comment = QMimeDatabase().mimeTypeForName(mime).comment();
+    cache.insert(mime, comment);
+    return comment;
 }
 
 Backend::~Backend() {

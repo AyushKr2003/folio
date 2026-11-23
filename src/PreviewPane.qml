@@ -302,7 +302,7 @@ Rectangle {
                 readonly property var apps: {
                     picked
                     return pane.hasItem && !pane.item.isDir && !pane.trashed && !pane.pluginItem && pane.folderPane
-                        ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
+                        ? pane.folderPane.paneFileOps.appsFor(pane.item.path, pane.type) : []
                 }
                 readonly property var current: apps.find(app => app.isDefault)
                 // Another app's file dialog is no place to change one's apps.
