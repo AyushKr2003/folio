@@ -1,47 +1,6 @@
 <RCC>
     <qresource prefix="/">
-        <file>Main.qml</file>
-        <file>FolderPane.qml</file>
-        <file>Glyph.qml</file>
-        <file>IconButton.qml</file>
-        <file>FolioToolTip.qml</file>
-        <file>FileTile.qml</file>
-        <file>FileRow.qml</file>
-        <file>FolderGrid.qml</file>
-        <file>FolderList.qml</file>
-        <file>FolderColumns.qml</file>
-        <file>FolderDrop.qml</file>
-        <file>Sidebar.qml</file>
-        <file>PathBar.qml</file>
-        <file>PreviewPane.qml</file>
-        <file>HelpOverlay.qml</file>
-        <file>Selecting.qml</file>
-        <file>Band.qml</file>
-        <file>FolioMenu.qml</file>
-        <file>FolioMenuItem.qml</file>
-        <file>MenuLine.qml</file>
-        <file>FolioScrollBar.qml</file>
-        <file>FileListView.qml</file>
-        <file>PlainButton.qml</file>
-        <file>PlainField.qml</file>
-        <file>SortMenu.qml</file>
-        <file>FileMenu.qml</file>
-        <file>FolioDialog.qml</file>
-        <file>ClashDialog.qml</file>
-        <file>ConfirmDialog.qml</file>
-        <file>ChooserBar.qml</file>
-        <file>FormatDialog.qml</file>
-        <file>DriveMenu.qml</file>
-        <file>PlaceMenu.qml</file>
-        <file>FolioText.qml</file>
         <file>omarchy.svg</file>
-        <file>Spinner.qml</file>
-        <file>RenameDialog.qml</file>
-        <file>MountPrompt.qml</file>
-        <file>PreviewWindow.qml</file>
-        <file>PdfPreview.qml</file>
-        <file>MediaPreview.qml</file>
-        <file>Format.js</file>
         <file>i18n/en.json</file>
         <file>i18n/ar.json</file>
         <file>i18n/bg.json</file>

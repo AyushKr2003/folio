@@ -40,6 +40,30 @@ target_link_libraries(folio_core PUBLIC
   PkgConfig::GIO PkgConfig::FONTCONFIG ZLIB::ZLIB)
 target_compile_options(folio_core PUBLIC -Wall -Wextra)
 
+# Precompile Folio's QML and JS with qmlcachegen so cold start loads compiled
+# bytecode/C++ from the binary instead of parsing QML on launch. Optional
+# preview viewers (QtQuick.Pdf, QtMultimedia) stay uncompiled resources so
+# builds without optional Qt modules still succeed.
+file(GLOB folio_qml_files CONFIGURE_DEPENDS src/*.qml src/*.js)
+set(folio_optional_qml
+  ${CMAKE_SOURCE_DIR}/src/PdfPreview.qml
+  ${CMAKE_SOURCE_DIR}/src/MediaPreview.qml
+)
+list(REMOVE_ITEM folio_qml_files ${folio_optional_qml})
+foreach(f IN LISTS folio_qml_files folio_optional_qml)
+  get_filename_component(name "${f}" NAME)
+  set_source_files_properties("${f}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
+endforeach()
+qt_add_qml_module(folio_core
+  URI FolioUI
+  VERSION 1.0
+  RESOURCE_PREFIX /
+  OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/FolioUI"
+  NO_PLUGIN
+  QML_FILES ${folio_qml_files}
+  RESOURCES ${folio_optional_qml}
+)
+
 add_executable(folio src/main.cpp src/resources.qrc)
 target_link_libraries(folio PRIVATE folio_core)
 

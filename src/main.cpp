@@ -109,7 +109,7 @@ static int preview(QGuiApplication &app) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("previewer", &previewer);
-    engine.load(QUrl("qrc:/PreviewWindow.qml"));
+    engine.load(QUrl("qrc:/FolioUI/PreviewWindow.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
     return app.exec();

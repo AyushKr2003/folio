@@ -1761,6 +1761,38 @@ private slots:
         QTRY_COMPARE(model.get(1).value("itemCount").toInt(), 1);
     }
 
+    void folderModelStreamsSmallFolderCountsAheadOfLargeFolders()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("000_large");
+        QDir(dir.path()).mkpath("small_a");
+        QDir(dir.path()).mkpath("small_b");
+        for (int i = 0; i < 1200; ++i)
+            write(dir.filePath(QString("000_large/f%1").arg(i)), "x");
+        write(dir.filePath("small_a/a.txt"), "x");
+        write(dir.filePath("small_b/b1.txt"), "x");
+        write(dir.filePath("small_b/b2.txt"), "x");
+
+        FolderModel model;
+        bool smallArrivedBeforeLarge = false;
+        QObject::connect(&model, &QAbstractItemModel::dataChanged, &model,
+                         [&](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
+            if (!roles.contains(FolderModel::ItemCountRole))
+                return;
+            if (model.get(1).value("itemCount").toInt() == 1
+                && model.get(2).value("itemCount").toInt() == 2
+                && model.get(0).value("itemCount").toInt() < 0)
+                smallArrivedBeforeLarge = true;
+        });
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 1200);
+        QCOMPARE(model.get(1).value("itemCount").toInt(), 1);
+        QCOMPARE(model.get(2).value("itemCount").toInt(), 2);
+        QVERIFY(smallArrivedBeforeLarge);
+    }
+
     void folderModelForgetsAFolderLeftWhileLoading()
     {
         QTemporaryDir dir;
@@ -7605,6 +7637,126 @@ private slots:
         QVERIFY(thumbnails.thumbnailerFor("").isEmpty());
     }
 
+    void thumbnailsCancelRunningHelpersAndAvoidFailureMarker()
+    {
+        QTemporaryDir dir;
+        const QString script = dir.filePath("hang.sh");
+        write(script, "sleep 300 &\necho $! > \"$1.helper\"\nwait\n");
+        write(dir.filePath("slow.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=application/x-slow-cancel;\n");
+
+        QStringList clips;
+        for (int i = 0; i < 6; ++i) {
+            const QString clip = dir.filePath(QString("clip_%1.bin").arg(i));
+            write(clip, "x");
+            clips << clip;
+        }
+        const QString picture = dir.filePath("fast.png");
+        QImage img(64, 64, QImage::Format_RGB32);
+        img.fill(Qt::red);
+        QVERIFY(img.save(picture, "PNG"));
+
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, {}, 10000);
+        ThumbnailProvider provider(&thumbnails);
+        QList<QQuickImageResponse *> busy;
+        QList<int> finished(clips.size(), 0);
+        for (int i = 0; i < clips.size(); ++i) {
+            const QString id = "128/1/application%2Fx-slow-cancel/"
+                               + QString::fromUtf8(QUrl::toPercentEncoding(clips[i]));
+            auto *r = provider.requestImageResponse(id, {});
+            QObject::connect(r, &QQuickImageResponse::finished, r, [&, i] { finished[i] = 1; });
+            busy << r;
+        }
+        // Wait for at least one helper process to start and record its child PID.
+        QTRY_VERIFY(QFile::exists(clips[0] + ".helper"));
+        QFile noted(clips[0] + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const int childPid = QString::fromLatin1(noted.readAll()).trimmed().toInt();
+        QVERIFY(childPid > 0);
+
+        QElapsedTimer timer;
+        timer.start();
+        for (auto *r : busy)
+            r->cancel();
+
+        const QString fastId = "128/1/image%2Fpng/" + QString::fromUtf8(QUrl::toPercentEncoding(picture));
+        auto *fast = provider.requestImageResponse(fastId, {});
+        QSignalSpy fastDone(fast, &QQuickImageResponse::finished);
+        QVERIFY(fastDone.wait(1500));
+        QVERIFY2(timer.elapsed() < 1500, qPrintable(QString("took %1 ms").arg(timer.elapsed())));
+        QVERIFY(fast->errorString().isEmpty());
+        fast->deleteLater();
+
+        QTRY_VERIFY(std::all_of(finished.begin(), finished.end(), [](int v) { return v == 1; }));
+        for (auto *r : busy)
+            r->deleteLater();
+        QTRY_VERIFY(ended(childPid));
+        // Cancelled work must not leave failure markers behind.
+        for (const QString &clip : clips)
+            QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(clip))));
+
+        // A thumbnailer executable removed after discovery must return immediately
+        // instead of waiting out the full patience timeout.
+        const QString goneScript = dir.filePath("gone.sh");
+        write(goneScript, "#!/bin/sh\nexit 0\n");
+        QFile::setPermissions(goneScript, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        write(dir.filePath("gone.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=\"" + goneScript.toUtf8() + "\" %i %o\nMimeType=application/x-gone-helper;\n");
+        Thumbnails withGone(dir.filePath("cache_gone"), {dir.path()}, {}, 10000);
+        QVERIFY(!withGone.thumbnailerFor("application/x-gone-helper").isEmpty());
+        QVERIFY(QFile::remove(goneScript));
+        const QString sample = dir.filePath("sample.gone");
+        write(sample, "x");
+        QElapsedTimer goneTimer;
+        goneTimer.start();
+        QVERIFY(withGone.load(sample, "application/x-gone-helper", 128).isNull());
+        QVERIFY2(goneTimer.elapsed() < 1000, qPrintable(QString("missing helper waited %1 ms").arg(goneTimer.elapsed())));
+    }
+
+    void thumbnailsServeCachedImagesWhileGeneratorsAreBusy()
+    {
+        QTemporaryDir dir;
+        const QString script = dir.filePath("hang.sh");
+        write(script, "sleep 30\n");
+        write(dir.filePath("slow.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=application/x-slow-busy;\n");
+
+        const QString cached = dir.filePath("ready.png");
+        QImage img(64, 64, QImage::Format_RGB32);
+        img.fill(Qt::cyan);
+        QVERIFY(img.save(cached, "PNG"));
+
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, {}, 10000);
+        QVERIFY(!thumbnails.load(cached, "image/png", 128).isNull());
+
+        ThumbnailProvider provider(&thumbnails);
+        QList<QQuickImageResponse *> busy;
+        for (int i = 0; i < 6; ++i) {
+            const QString clip = dir.filePath(QString("busy_%1.bin").arg(i));
+            write(clip, "x");
+            const QString id = "128/1/application%2Fx-slow-busy/"
+                               + QString::fromUtf8(QUrl::toPercentEncoding(clip));
+            busy << provider.requestImageResponse(id, {});
+        }
+        QTest::qWait(80);
+
+        QElapsedTimer timer;
+        timer.start();
+        const QString cachedId = "128/1/image%2Fpng/" + QString::fromUtf8(QUrl::toPercentEncoding(cached));
+        auto *hit = provider.requestImageResponse(cachedId, {});
+        QSignalSpy hitDone(hit, &QQuickImageResponse::finished);
+        QVERIFY(hitDone.wait(500));
+        QVERIFY2(timer.elapsed() < 500, qPrintable(QString("cached hit took %1 ms").arg(timer.elapsed())));
+        QVERIFY(hit->errorString().isEmpty());
+        hit->deleteLater();
+
+        // Cancel slow jobs so teardown finishes immediately.
+        for (auto *r : busy) {
+            r->cancel();
+            QObject::connect(r, &QQuickImageResponse::finished, r, &QObject::deleteLater);
+        }
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));
@@ -7665,7 +7817,7 @@ private slots:
             for (const QQmlError &warning : warnings)
                 problems << warning.toString();
         });
-        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        engine.load(QUrl("qrc:/FolioUI/PreviewWindow.qml"));
         QVERIFY2(!engine.rootObjects().isEmpty(), qPrintable(problems.join("\n")));
         QObject *window = engine.rootObjects().first();
         window->setProperty("helpVisible", true);
@@ -7777,7 +7929,7 @@ private slots:
         engine.rootContext()->setContextProperty("translator", &translator);
         engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("previewer", &previewer);
-        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        engine.load(QUrl("qrc:/FolioUI/PreviewWindow.qml"));
         QVERIFY(!engine.rootObjects().isEmpty());
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
         QTRY_COMPARE(previewer.viewer(), QString("other"));
@@ -7917,7 +8069,7 @@ private slots:
         }));
         engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("previewer", preview.get());
-        QQmlComponent component(&engine, QUrl("qrc:/PreviewWindow.qml"));
+        QQmlComponent component(&engine, QUrl("qrc:/FolioUI/PreviewWindow.qml"));
         std::unique_ptr<QObject> root(component.create());
         QVERIFY2(root, qPrintable(component.errorString()));
         auto *view = root->property("view").value<QQuickItem *>();
@@ -8884,7 +9036,7 @@ private slots:
         pdf.setData("import QtQuick.Pdf\nPdfDocument {}\n", QUrl());
         if (pdf.isError())
             QSKIP("Qt PDF isn't installed");
-        QQmlComponent component(&engine, QUrl("qrc:/PreviewWindow.qml"));
+        QQmlComponent component(&engine, QUrl("qrc:/FolioUI/PreviewWindow.qml"));
         std::unique_ptr<QObject> window(component.create());
         QVERIFY2(window, qPrintable(component.errorString()));
         const auto pages = [&]() -> int {

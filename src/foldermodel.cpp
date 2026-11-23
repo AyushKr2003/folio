@@ -1008,7 +1008,7 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
         entry.peek << prefix + best[i];
 }
 
-int FolderModel::itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop) {
+static int itemCountBounded(const QString &folder, bool showHidden, const std::function<bool()> &stop, int limit) {
     DIR *dir = ::opendir(QFile::encodeName(folder).constData());
     if (!dir)
         return 0;
@@ -1026,9 +1026,17 @@ int FolderModel::itemCount(const QString &folder, bool showHidden, const std::fu
             return -1;
         }
         ++count;
+        if (limit > 0 && count > limit) {
+            ::closedir(dir);
+            return -2;
+        }
     }
     ::closedir(dir);
     return count;
+}
+
+int FolderModel::itemCount(const QString &folder, bool showHidden, const std::function<bool()> &stop) {
+    return itemCountBounded(folder, showHidden, stop, 0);
 }
 
 void FolderModel::reload() {
@@ -1146,44 +1154,86 @@ void FolderModel::countFolders(quint64 generation) {
 
     const bool showHidden = m_showHidden;
     auto *watcher = new QFutureWatcher<QVector<FolderRef>>(this);
+    connect(watcher, &QFutureWatcherBase::resultsReadyAt, this, [this, watcher, generation](int from, int to) {
+        if (generation != m_generation)
+            return;
+        QVector<int> updated;
+        for (int i = from; i < to; ++i) {
+            for (const auto &summary : watcher->resultAt(i)) {
+                int row = summary.row;
+                if (row < 0 || row >= m_entries.size() || m_entries[row].path != summary.path)
+                    row = indexOfPath(summary.path);
+                if (row < 0)
+                    continue;
+                m_entries[row].itemCount = summary.count;
+                updated.push_back(row);
+            }
+        }
+        if (updated.isEmpty())
+            return;
+        std::sort(updated.begin(), updated.end());
+        int i = 0;
+        while (i < updated.size()) {
+            int j = i;
+            while (j + 1 < updated.size() && updated[j + 1] <= updated[j] + 1)
+                ++j;
+            emit dataChanged(index(updated[i]), index(updated[j]), {ItemCountRole});
+            i = j + 1;
+        }
+        // QML re-reads its get() snapshots (the current item, which the
+        // details column shows) on countChanged, and the counts they show
+        // just arrived.
+        emit countChanged();
+    });
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
-        int first = -1, last = -1;
-        for (const auto &summary : watcher->result()) {
-            if (summary.row >= m_entries.size() || m_entries[summary.row].path != summary.path)
-                continue;
-            m_entries[summary.row].itemCount = summary.count;
-            if (first < 0) {
-                first = last = summary.row;
-            } else if (summary.row == last + 1) {
-                last = summary.row;
-            } else {
-                emit dataChanged(index(first), index(last), {ItemCountRole});
-                first = last = summary.row;
-            }
-        }
-        if (first >= 0) {
-            emit dataChanged(index(first), index(last), {ItemCountRole});
-            // QML re-reads its get() snapshots (the current item, which the
-            // details column shows) on countChanged, and the counts they show
-            // just arrived.
-            emit countChanged();
-        }
         remember();
     });
     const auto latest = m_latest;
-    watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation]() mutable {
+    watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation](QPromise<QVector<FolderRef>> &promise) mutable {
         // Overtaken (another folder, or a re-read), the counts would be
         // thrown away, so it stops instead of listing every subfolder.
         const auto overtaken = [&] { return *latest != generation; };
+        constexpr int fastPassLimit = 1024;
+        QVector<FolderRef> batch;
+        QVector<FolderRef> large;
+        QElapsedTimer since;
+        since.start();
+        // Pass 1: count ordinary folders first and stream them in small
+        // batches so one huge folder (e.g. node_modules) never holds back its
+        // siblings' counts.
         for (auto &folder : folders) {
             if (overtaken())
-                break;
-            folder.count = itemCount(folder.path, showHidden, overtaken);
+                return;
+            const int c = itemCountBounded(folder.path, showHidden, overtaken, fastPassLimit);
+            if (c == -1)
+                return;
+            if (c == -2) {
+                large.push_back(folder);
+                continue;
+            }
+            folder.count = c;
+            batch.push_back(folder);
+            if (batch.size() >= 32 || since.elapsed() >= 40) {
+                promise.addResult(std::move(batch));
+                batch.clear();
+                since.restart();
+            }
         }
-        return folders;
+        if (!batch.isEmpty())
+            promise.addResult(std::move(batch));
+        // Pass 2: finish the huge folders and emit each as soon as it lands.
+        for (auto &folder : large) {
+            if (overtaken())
+                return;
+            const int c = itemCount(folder.path, showHidden, overtaken);
+            if (c < 0)
+                return;
+            folder.count = c;
+            promise.addResult(QVector<FolderRef>{folder});
+        }
     }));
 }
 
@@ -1365,6 +1415,16 @@ void FolderModel::searchHere(quint64 generation) {
 void FolderModel::insertFound(const QVector<Entry> &found) {
     if (found.isEmpty())
         return;
+    if (m_entries.isEmpty()) {
+        QVector<Entry> sorted = found;
+        sortEntries(sorted, m_sort);
+        beginInsertRows({}, 0, int(sorted.size()) - 1);
+        m_entries = std::move(sorted);
+        m_pathIndexDirty = true;
+        endInsertRows();
+        emit countChanged();
+        return;
+    }
     const auto order = before(m_sort);
     for (const Entry &e : found) {
         const int row = int(std::upper_bound(m_entries.begin(), m_entries.end(), e, order) - m_entries.begin());

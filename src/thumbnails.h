@@ -6,6 +6,9 @@
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
 #include <QThreadPool>
+#include <atomic>
+#include <functional>
+#include <memory>
 #include <mutex>
 
 // Thumbnails per the freedesktop thumbnail spec: one shared cache under
@@ -24,19 +27,27 @@ public:
     explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {},
                         const QString &remoteRoot = {}, int patience = 15000);
 
+    enum class CacheLookup { Miss, Hit, Failed };
+
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
     QImage load(const QString &path, const QString &mime, int size) const;
+    // Fast disk-cache probe: checks only the local cache/failure files before
+    // touching the source file, so cold misses never block behind slow mounts.
+    CacheLookup loadCached(const QString &path, int size, QImage *imageOut) const;
     // Like load(), but defers writing the cache or failure marker so the
     // provider can hand the pixels to QML before encoding PNG to disk.
+    // Stops early (and avoids recording a failure) when `stop` returns true.
     QImage loadNow(const QString &path, const QString &mime, int size, bool *fresh, bool *failed,
-                   QDateTime *modified) const;
+                   QDateTime *modified, const std::function<bool()> &stop = {}) const;
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     void rememberFailure(const QString &path, const QDateTime &modified) const;
 
     // Read a fresh thumbnail from any standard bucket, smallest first.
     QImage cached(const QString &path) const;
 
+    // Fast disk-cache probe for sharp previews (~/.cache/folio/sharp).
+    QImage sharpCached(const QString &path, int pixels) const;
     // A picture at `pixels` on its longest side, as sharp as the details
     // column draws it: read from the file when it's that small already,
     // otherwise from Folio's own cache (~/.cache/folio/sharp) when one's been
@@ -45,7 +56,8 @@ public:
     // now, for keep() to cache, dated `modified`: the picture's time as it
     // was before its pixels were read, so one saved over meanwhile is made
     // again rather than kept old under its new time.
-    QImage sharp(const QString &path, const QString &mime, int pixels, bool *fresh, QDateTime *modified) const;
+    QImage sharp(const QString &path, const QString &mime, int pixels, bool *fresh, QDateTime *modified,
+                 const std::function<bool()> &stop = {}) const;
     void keep(const QImage &image, const QString &path, int pixels, const QDateTime &modified) const;
 
     static QString cacheKey(const QString &path);
@@ -61,9 +73,12 @@ private:
     QString failPath(const QString &key) const;
     QString sharpPath(const QString &stem, int pixels, bool alpha) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
-    QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
-    QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
-    static QImage pdfPage(const QString &path, int pixels, int patience);
+    QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted,
+                    const std::function<bool()> &stop = {}) const;
+    QImage runThumbnailer(const QString &command, const QString &path, int pixels,
+                          const std::function<bool()> &stop = {}) const;
+    static QImage pdfPage(const QString &path, int pixels, int patience,
+                          const std::function<bool()> &stop = {});
     bool failedBefore(const QString &key, const QDateTime &modified) const;
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
     static bool madeFor(const QImage &image, const QDateTime &modified);
@@ -82,9 +97,14 @@ private:
 class ThumbnailProvider : public QQuickAsyncImageProvider {
 public:
     explicit ThumbnailProvider(const Thumbnails *thumbnails);
+    ~ThumbnailProvider() override;
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override;
 
 private:
     const Thumbnails *m_thumbnails;
+    // Separate small pool for reading ready disk-cache PNGs so cached tiles
+    // and previews never stall behind running video/PDF/RAW generators.
+    QThreadPool m_cachePool;
     QThreadPool m_pool;
+    std::shared_ptr<std::atomic_bool> m_stopping = std::make_shared<std::atomic_bool>(false);
 };

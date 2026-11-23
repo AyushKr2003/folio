@@ -7,9 +7,14 @@
 #include "backend.h"
 #include "fileops.h"
 
+static void initQmlCache() {
+    Q_INIT_RESOURCE(qmlcache_folio_core);
+}
+
 Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
-    : QObject(parent), m_engine(engine), m_plugins(plugins), m_component(engine, QUrl("qrc:/Main.qml")),
-      m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
+    : QObject(parent), m_engine(engine), m_plugins(plugins),
+      m_component((initQmlCache(), engine), QUrl("qrc:/FolioUI/Main.qml")),
+      m_pane(engine, QUrl("qrc:/FolioUI/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
     // Only a file chooser's windows have one.
