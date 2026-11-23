@@ -10274,7 +10274,7 @@ private slots:
         engine.rootContext()->setContextProperty("translator", &translator);
         engine.rootContext()->setContextProperty("theme", &theme);
         engine.rootContext()->setContextProperty("previewer", &previewer);
-        engine.load(QUrl("qrc:/PreviewWindow.qml"));
+        engine.load(QUrl("qrc:/FolioUI/PreviewWindow.qml"));
         QVERIFY(!engine.rootObjects().isEmpty());
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
         QVERIFY(window);
