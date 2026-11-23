@@ -121,29 +121,49 @@ Rectangle {
     Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && (keyedDrive !== null || keyedPlace !== null)
     // Return has its own handler, which Keys calls before this one.
     Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
+    function showPlaceMenu(row, isPinned, near) {
+        placeMenuLoader.active = true
+        placeMenuLoader.item.show(row, isPinned, near)
+    }
+    function showDriveMenu(row, near) {
+        driveMenuLoader.active = true
+        driveMenuLoader.item.show(row, near)
+    }
     function openDriveMenu(event) {
         if (!menuKey(event))
             return false
         if (keyedDrive)
-            driveMenu.show(keyedDrive.modelData, keyedDrive)
+            showDriveMenu(keyedDrive.modelData, keyedDrive)
         else if (keyedPlace)
-            placeMenu.show(keyedPlace.modelData, cursor >= pinnedAt, keyedPlace)
+            showPlaceMenu(keyedPlace.modelData, cursor >= pinnedAt, keyedPlace)
         else
             return false
         return true
     }
 
-    PlaceMenu {
-        id: placeMenu
-        onRenameRequested: (path) => sidebar.renameRequested(path)
-        onDeleteRequested: (path) => sidebar.deleteRequested(path)
-        onTrashRequested: (path) => sidebar.trashRequested(path)
+    Loader {
+        id: placeMenuLoader
+        active: false
+        visible: false
+        source: "PlaceMenu.qml"
+    }
+    Connections {
+        target: placeMenuLoader.item
+        function onRenameRequested(path) { sidebar.renameRequested(path) }
+        function onDeleteRequested(path) { sidebar.deleteRequested(path) }
+        function onTrashRequested(path) { sidebar.trashRequested(path) }
     }
 
-    DriveMenu {
-        id: driveMenu
-        onOpenRequested: (path) => { sidebar.go(path); sidebar.finished() }
-        onFormatRequested: (disk) => sidebar.formatRequested(disk)
+    Loader {
+        id: driveMenuLoader
+        active: false
+        visible: false
+        source: "DriveMenu.qml"
+    }
+    Connections {
+        target: driveMenuLoader.item
+        function onOpenRequested(path) { sidebar.go(path); sidebar.finished() }
+        function onFormatRequested(disk) { sidebar.formatRequested(disk) }
     }
 
     // The deepest place the current folder sits under.
@@ -321,7 +341,7 @@ Rectangle {
                     onClicked: sidebar.go(modelData.path)
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: placeMenu.show(homeRow.modelData, false, null)
+                        onTapped: sidebar.showPlaceMenu(homeRow.modelData, false, null)
                     }
                 }
             }
@@ -351,7 +371,7 @@ Rectangle {
                     endPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: placeMenu.show(pinRow.modelData, true, null)
+                        onTapped: sidebar.showPlaceMenu(pinRow.modelData, true, null)
                     }
                     IconButton {
                         id: unpin
@@ -439,7 +459,7 @@ Rectangle {
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: driveMenu.show(driveRow.modelData, null)
+                        onTapped: sidebar.showDriveMenu(driveRow.modelData, null)
                     }
                     IconButton {
                         id: eject

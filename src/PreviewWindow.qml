@@ -200,20 +200,29 @@ ApplicationWindow {
             onPressed: mouse => mouse.button === Qt.BackButton ? previewer.previous() : previewer.next()
         }
 
-        HelpOverlay {
+        Loader {
+            id: helpLoader
             anchors.fill: parent
-            visible: win.helpVisible
-            onDismissed: win.helpVisible = false
-            groups: [{ title: qsTr("Preview"), shortcuts: [
-                [qsTr("Previous / next file"), (win.rtl ? [["→"], ["←"]] : [["←"], ["→"]]).concat([["↑"], ["↓"]])],
-                [qsTr("Open in its app"), [["⏎"]]],
-                [qsTr("Scroll"), [["↑", "↓"], ["Page Up"], ["Page Down"]]],
-                [qsTr("Zoom in / out"), [["Ctrl", "="], ["Ctrl", "-"]]],
-                [qsTr("Fit to the window"), [["Ctrl", "0"]]],
-                [qsTr("Play or pause"), [["K"]]],
-                [qsTr("Back / ahead 5 seconds"), [["Shift", "←"], ["Shift", "→"]]],
-                [qsTr("Close"), [["Space"], ["Escape"]]]
-            ]}]
+            active: win.helpVisible
+            visible: active
+            source: "HelpOverlay.qml"
+            onLoaded: {
+                item.groups = Qt.binding(() => [{ title: qsTr("Preview"), shortcuts: [
+                    [qsTr("Previous / next file"), (win.rtl ? [["→"], ["←"]] : [["←"], ["→"]]).concat([["↑"], ["↓"]])],
+                    [qsTr("Open in its app"), [["⏎"]]],
+                    [qsTr("Scroll"), [["↑", "↓"], ["Page Up"], ["Page Down"]]],
+                    [qsTr("Zoom in / out"), [["Ctrl", "="], ["Ctrl", "-"]]],
+                    [qsTr("Fit to the window"), [["Ctrl", "0"]]],
+                    [qsTr("Play or pause"), [["K"]]],
+                    [qsTr("Back / ahead 5 seconds"), [["Shift", "←"], ["Shift", "→"]]],
+                    [qsTr("Close"), [["Space"], ["Escape"]]]
+                ]}])
+                item.forceActiveFocus()
+            }
+        }
+        Connections {
+            target: helpLoader.item
+            function onDismissed() { win.helpVisible = false }
         }
     }
 
