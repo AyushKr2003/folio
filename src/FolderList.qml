@@ -33,6 +33,10 @@ FileListView {
     Band {
         view: list
         rectOf: (i) => Qt.rect(0, i * list.rowHeight, list.width, list.rowHeight)
+        rangeFor: (area) => [
+            Math.max(0, Math.floor(area.y / list.rowHeight)),
+            Math.min(list.count - 1, Math.floor((area.y + area.height) / list.rowHeight))
+        ]
     }
 
     // → opens the selected folder in place, and on one open already steps

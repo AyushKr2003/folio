@@ -43,6 +43,7 @@ public:
     // How a file is opened, for a test to put its own in the place of the default app: it gives what went wrong, or nothing.
     using Opener = std::function<QString(const QString &)>;
     explicit Previewer(Opener opener, QObject *parent = nullptr);
+    ~Previewer() override;
 
     // Shows the file right away, then lists its folder in the background so
     // the arrow keys can step to its neighbours.
@@ -110,6 +111,7 @@ private:
 
     Opener m_opener;
     QVector<FolderModel::Entry> m_entries;
+    QHash<QString, int> m_pathIndex;
     int m_index = -1;
     QString m_viewer;
     QString m_text;
@@ -119,6 +121,8 @@ private:
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;
+    // Stops an overtaken or orphaned folder listing early.
+    std::shared_ptr<std::atomic<quint64>> m_listing = std::make_shared<std::atomic<quint64>>(0);
     // The newest item read in the background; older readings are dropped,
     // or skipped when they haven't started.
     std::shared_ptr<std::atomic<quint64>> m_reading = std::make_shared<std::atomic<quint64>>(0);

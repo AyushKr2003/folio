@@ -328,23 +328,23 @@ bool Chooser::registerOn(QObject *object, WindowsFactory windows) {
            && bus.registerService("org.freedesktop.impl.portal.desktop.folio");
 }
 
-void Chooser::OpenFile(const QDBusObjectPath &handle, const QString &, const QString &, const QString &title,
+void Chooser::OpenFile(const QDBusObjectPath &handle, const QString &, const QString &parentWindow, const QString &title,
                        const QVariantMap &options, const QDBusMessage &message) {
-    open(ChooserRequest::Open, handle, title, options, message);
+    open(ChooserRequest::Open, handle, parentWindow, title, options, message);
 }
 
-void Chooser::SaveFile(const QDBusObjectPath &handle, const QString &, const QString &, const QString &title,
+void Chooser::SaveFile(const QDBusObjectPath &handle, const QString &, const QString &parentWindow, const QString &title,
                        const QVariantMap &options, const QDBusMessage &message) {
-    open(ChooserRequest::Save, handle, title, options, message);
+    open(ChooserRequest::Save, handle, parentWindow, title, options, message);
 }
 
-void Chooser::SaveFiles(const QDBusObjectPath &handle, const QString &, const QString &, const QString &title,
+void Chooser::SaveFiles(const QDBusObjectPath &handle, const QString &, const QString &parentWindow, const QString &title,
                         const QVariantMap &options, const QDBusMessage &message) {
-    open(ChooserRequest::SaveFiles, handle, title, options, message);
+    open(ChooserRequest::SaveFiles, handle, parentWindow, title, options, message);
 }
 
-void Chooser::open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, const QString &title,
-                   const QVariantMap &options, const QDBusMessage &message) {
+void Chooser::open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, const QString &parentWindow,
+                   const QString &title, const QVariantMap &options, const QDBusMessage &message) {
     // Answered once the dialog is, however that comes about.
     message.setDelayedReply(true);
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -363,7 +363,7 @@ void Chooser::open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, con
     });
     Windows *windows = m_windows();
     Backend *backend = windows && bus.registerObject(handle.path(), dialog, QDBusConnection::ExportScriptableSlots)
-                           ? windows->open(request.folder, {}, dialog)
+                           ? windows->open(request.folder, {}, dialog, parentWindow)
                            : nullptr;
     if (!backend) {
         dialog->respond(2, {});

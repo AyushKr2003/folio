@@ -56,8 +56,8 @@ private:
     QString m_dateLocale;
     // Each translation with the code of the catalog it came from, whose
     // plural rule its forms follow: a string still in English counts the
-    // English way.
-    QHash<QString, QPair<QString, QJsonValue>> m_strings;
+    // English way. Keyed by UTF-8 bytes so translate() needs no QString copy.
+    QHash<QByteArray, QPair<QString, QJsonValue>> m_strings;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
 };

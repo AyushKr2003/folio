@@ -442,22 +442,52 @@ QVariantList Places::devicesFrom(const QList<Drives::Volume> &volumes, const QVa
             listed << v.root;
         }
     }
-    for (const QVariant &drive : drives)
-        if (!listed.contains(drive.toMap().value("path").toString()))
-            devices << drive;
+    for (const QVariant &drive : drives) {
+        const QString path = drive.toMap().value("path").toString();
+        if (listed.contains(path))
+            continue;
+        // `drives` may come from a reading older than GIO's volumes (one
+        // stalled on a network mount). A drive GIO now lists unmounted, or
+        // mounted elsewhere, isn't at this path any more, and one whose
+        // device is gone was pulled out; either row would open a folder
+        // that's no longer the drive's. A mount GIO doesn't manage stays.
+        QString device;
+        for (const Mount &m : mounts)
+            if (m.root == path) {
+                device = m.device;
+                break;
+            }
+        if (!device.isEmpty()) {
+            const bool gioHasIt = std::any_of(volumes.begin(), volumes.end(),
+                                              [&](const Drives::Volume &v) { return v.id == device; });
+            if (gioHasIt || (device.startsWith("/dev/") && !QFileInfo::exists(device)))
+                continue;
+        }
+        devices << drive;
+    }
     return devices;
 }
 
 QList<Places::Mount> Places::readMounts() {
+    static const QStringList pseudo{"tmpfs", "devtmpfs", "squashfs", "overlay", "ramfs", "fuse.portal",
+                                    "fuse.gvfsd-fuse", "efivarfs", "autofs"};
     QList<Mount> mounts;
     auto volumes = QStorageInfo::mountedVolumes();
     // Shortest path first, so a drive mounted twice is listed at its top.
     std::sort(volumes.begin(), volumes.end(),
               [](const QStorageInfo &a, const QStorageInfo &b) { return a.rootPath().size() < b.rootPath().size(); });
     for (const QStorageInfo &v : volumes) {
+        const QString root = v.rootPath();
+        const QString device = QString::fromUtf8(v.device());
+        const QString type = QString::fromUtf8(v.fileSystemType());
+        // Skip pseudo, non-block and system mounts before calling isReady()/bytesAvailable()
+        // so we never issue statvfs() on virtual or unresponsive network filesystems.
+        if (Disks::isSystemMount(root) || !device.startsWith("/dev/") || device.startsWith("/dev/loop")
+            || device.startsWith("/dev/zram") || pseudo.contains(type))
+            continue;
         if (!v.isValid() || !v.isReady())
             continue;
-        Mount mount{v.rootPath(), QString::fromUtf8(v.device()), QString::fromUtf8(v.fileSystemType()), v.name()};
+        Mount mount{root, device, type, v.name()};
         // A read-only medium (an installer image, a DVD) has nothing free to
         // speak of; it says nothing rather than "0 B free".
         mount.free = v.isReadOnly() ? -1 : v.bytesAvailable();
@@ -486,13 +516,28 @@ void Places::refreshDevices() {
 void Places::mountsRead() {
     QList<Mount> mounts = m_mounts.result();
     // What GIO can do with each drive is asked here, on the UI thread, where
-    // GIO's volume monitor lives; it already knows, so asking is quick.
-    for (Mount &mount : mounts)
-        if (GMount *gmount = mount.device.startsWith("/dev/") ? mountAt(mount.root) : nullptr) {
-            mount.canEject = g_mount_can_eject(gmount);
-            mount.canUnmount = g_mount_can_unmount(gmount);
-            g_object_unref(gmount);
+    // GIO's volume monitor lives; fetch the mount list once for all drives.
+    if (!mounts.isEmpty()) {
+        static GVolumeMonitor *const monitor = g_volume_monitor_get();
+        GList *gmounts = g_volume_monitor_get_mounts(monitor);
+        QHash<QString, GMount *> byRoot;
+        for (GList *l = gmounts; l; l = l->next) {
+            GFile *root = g_mount_get_root(G_MOUNT(l->data));
+            char *rootPath = g_file_get_path(root);
+            if (rootPath) {
+                byRoot.insert(QString::fromUtf8(rootPath), G_MOUNT(l->data));
+                g_free(rootPath);
+            }
+            g_object_unref(root);
         }
+        for (Mount &mount : mounts) {
+            if (GMount *gmount = byRoot.value(mount.root)) {
+                mount.canEject = g_mount_can_eject(gmount);
+                mount.canUnmount = g_mount_can_unmount(gmount);
+            }
+        }
+        g_list_free_full(gmounts, g_object_unref);
+    }
     m_lastMounts = mounts;
     publishDevices();
     if (std::exchange(m_rereadMounts, false))

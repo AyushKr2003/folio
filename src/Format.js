@@ -7,14 +7,29 @@
 // a language switch; whatever goes through qsTr here is
 // refreshed with the rest of the strings.
 
+var _locales = {}
+function localeFor(name) {
+    const key = name || ""
+    let locale = _locales[key]
+    if (!locale) {
+        locale = Qt.locale(key)
+        _locales[key] = locale
+    }
+    return locale
+}
+
 // Each unit is whole with its number, so a language can place and space it
-// its own way ("1,5 Mo").
+// its own way ("1,5 Mo"). Only the chosen unit is translated.
 function size(bytes) {
-    const units = [qsTr("%1 B"), qsTr("%1 KB"), qsTr("%1 MB"), qsTr("%1 GB"), qsTr("%1 TB")]
     let i = 0
     let value = bytes
-    while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-    return units[i].arg(value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1))
+    while (value >= 1000 && i < 4) { value /= 1000; ++i }
+    const formatted = value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1)
+    if (i === 0) return qsTr("%1 B").arg(formatted)
+    if (i === 1) return qsTr("%1 KB").arg(formatted)
+    if (i === 2) return qsTr("%1 MB").arg(formatted)
+    if (i === 3) return qsTr("%1 GB").arg(formatted)
+    return qsTr("%1 TB").arg(formatted)
 }
 
 // How much room is left on a drive, as its row in the sidebar says it.
@@ -27,7 +42,7 @@ function free(bytes) {
 function when(date, localeName) {
     if (!date || isNaN(date.getTime()))
         return ""
-    const locale = Qt.locale(localeName)
+    const locale = localeFor(localeName)
     const now = new Date()
     const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
     return spaced(today ? date.toLocaleTimeString(locale, QtQml.Locale.ShortFormat) : date.toLocaleDateString(locale, QtQml.Locale.ShortFormat))
@@ -35,7 +50,7 @@ function when(date, localeName) {
 
 // A date and time in the language's short form, as in the details.
 function stamp(date, localeName) {
-    return spaced(date.toLocaleString(Qt.locale(localeName), QtQml.Locale.ShortFormat))
+    return spaced(date.toLocaleString(localeFor(localeName), QtQml.Locale.ShortFormat))
 }
 
 // Dates and times come with no-break spaces ("1:42 PM" with a narrow one)

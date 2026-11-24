@@ -154,8 +154,8 @@ public slots:
                    const QString &title, const QVariantMap &options, const QDBusMessage &message);
 
 private:
-    void open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, const QString &title,
-              const QVariantMap &options, const QDBusMessage &message);
+    void open(ChooserRequest::Mode mode, const QDBusObjectPath &handle, const QString &parentWindow,
+              const QString &title, const QVariantMap &options, const QDBusMessage &message);
 
     WindowsFactory m_windows;
     int m_open = 0;

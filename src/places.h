@@ -79,6 +79,8 @@ public:
     // doesn't list (an fstab mount). A mounted volume `drives` leaves out
     // stays out when it's the system's own, and is listed from GIO's mount
     // otherwise (a loop device), with what's free from `mounts`.
+    // A drive in `drives` whose device GIO now has unmounted or elsewhere,
+    // or that's gone, is left out: `drives` can be an older reading.
     static QVariantList devicesFrom(const QList<Drives::Volume> &volumes, const QVariantList &drives,
                                     const QList<Mount> &mounts = {});
 

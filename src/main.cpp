@@ -17,6 +17,7 @@
 #include "dragpicture.h"
 #include "filemanager1.h"
 #include "foldermodel.h"
+#include "kineticscroll.h"
 #include "places.h"
 #include "plugins.h"
 #include "previewer.h"
@@ -52,6 +53,7 @@ static void setUp(QGuiApplication &app) {
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
     qmlRegisterType<DragPicture>("Folio", 1, 0, "DragPicture");
+    qmlRegisterType<KineticScroll>("Folio", 1, 0, "KineticScroll");
 }
 
 // `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
@@ -110,7 +112,7 @@ static int preview(QGuiApplication &app) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("previewer", &previewer);
-    engine.load(QUrl("qrc:/PreviewWindow.qml"));
+    engine.load(QUrl("qrc:/FolioUI/PreviewWindow.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
     return app.exec();

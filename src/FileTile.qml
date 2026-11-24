@@ -139,6 +139,13 @@ Item {
         // of time because a drag can't wait for it.
         onHoveredChanged: if (hovered) dragPicture.capture(art)
     }
+    // Given another file by the grid, clear any previous drag picture and
+    // retake it if the pointer is still over this tile.
+    GridView.onReused: {
+        tile.Drag.imageSource = ""
+        if (hover.hovered)
+            dragPicture.capture(art)
+    }
 
     // Dragging hands the file to whatever it lands on as a URI list: the
     // sidebar pins a folder, other apps get the file.
@@ -247,7 +254,7 @@ Item {
                 height: thumb.height
                 radius: tile.iconRadius
                 visible: false
-                layer.enabled: true
+                layer.enabled: thumb.layer.enabled
                 layer.textureSize: thumb.layer.textureSize
             }
 

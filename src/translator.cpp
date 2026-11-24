@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QRegularExpression>
+#include <cstring>
 
 namespace {
 
@@ -40,12 +41,15 @@ QString readLanguage(const QString &path) {
 // app's numbers and dates match the desktop's (Arabic there uses Western
 // digits); without Omarchy, Qt's own locale for the code.
 QLocale formatLocale(const QString &language) {
-    QFile registry(qEnvironmentVariable("OMARCHY_PATH") + "/default/i18n/locales.json");
-    if (registry.open(QIODevice::ReadOnly)) {
-        const QString name = QJsonDocument::fromJson(registry.readAll()).object()
-                                 .value(language).toObject().value("formatLocale").toString();
-        if (!name.isEmpty())
-            return QLocale(name);
+    const QString omarchyPath = qEnvironmentVariable("OMARCHY_PATH");
+    if (!omarchyPath.isEmpty()) {
+        QFile registry(omarchyPath + "/default/i18n/locales.json");
+        if (registry.open(QIODevice::ReadOnly)) {
+            const QString name = QJsonDocument::fromJson(registry.readAll()).object()
+                                     .value(language).toObject().value("formatLocale").toString();
+            if (!name.isEmpty())
+                return QLocale(name);
+        }
     }
     return QLocale(language);
 }
@@ -136,9 +140,14 @@ bool Translator::isEmpty() const {
 }
 
 QString Translator::translate(const char *, const char *sourceText, const char *, int n) const {
+    if (!sourceText)
+        return {};
     QReadLocker locker(&m_lock);
     // A null string tells Qt there is no translation, so it shows the English.
-    const auto [code, value] = m_strings.value(QString::fromUtf8(sourceText));
+    const auto it = m_strings.constFind(QByteArray::fromRawData(sourceText, qsizetype(std::strlen(sourceText))));
+    if (it == m_strings.cend())
+        return {};
+    const auto &[code, value] = it.value();
     if (value.isString())
         return value.toString();
     if (value.isObject()) {
@@ -185,6 +194,10 @@ void Translator::reload() {
         return;
 
     const auto strings = catalog(m_catalogDirectory, language);
+    QHash<QByteArray, QPair<QString, QJsonValue>> utf8Strings;
+    utf8Strings.reserve(strings.size());
+    for (auto it = strings.cbegin(); it != strings.cend(); ++it)
+        utf8Strings.insert(it.key().toUtf8(), it.value());
     QLocale locale = formatLocale(language);
     const QLocale dates = ::dateLocale(locale);
     // name() drops nondefault scripts (sr_Latn_RS becomes sr_RS). Keep the
@@ -194,7 +207,7 @@ void Translator::reload() {
         QWriteLocker locker(&m_lock);
         m_language = language;
         m_dateLocale = dateName;
-        m_strings = strings;
+        m_strings = std::move(utf8Strings);
     }
     // Numbers and sorting still follow the UI language, as does mirroring.
     // Dates use their separate locale without changing those defaults.

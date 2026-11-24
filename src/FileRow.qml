@@ -143,7 +143,7 @@ Item {
                 anchors.fill: parent
                 radius: Math.min(4, theme.radius)
                 visible: false
-                layer.enabled: true
+                layer.enabled: thumb.layer.enabled
             }
             Glyph {
                 anchors.centerIn: parent
