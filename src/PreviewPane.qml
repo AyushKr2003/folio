@@ -68,8 +68,8 @@ Rectangle {
     color: "transparent"
     // It takes all the room right of the columns. The facts and the button
     // keep to a width that still reads as one block, centered under the
-    // picture.
-    readonly property int textWidth: 480
+    // picture. The panels' preview keeps them narrower.
+    property int textWidth: 480
 
     ColumnLayout {
         anchors.fill: parent

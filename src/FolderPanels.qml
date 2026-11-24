@@ -225,7 +225,12 @@ Item {
                 active: !!view.detailsPane && view.selected.path !== undefined && view.selected.isDir !== true
                 visible: active
                 source: "PreviewPane.qml"
-                onLoaded: item.folderPane = Qt.binding(() => view.detailsPane)
+                onLoaded: {
+                    item.folderPane = Qt.binding(() => view.detailsPane)
+                    // The facts and the Open button as narrow as the grid's
+                    // details pane has them, not stretched across the panel.
+                    item.textWidth = 300
+                }
             }
             Connections {
                 target: preview.item
