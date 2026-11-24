@@ -64,6 +64,7 @@ Rectangle {
             [qsTr("New folder"), [["Ctrl", "Shift", "N"]]],
             [qsTr("Preview the selected file"), [["Space"]]],
             [qsTr("Show or hide the details pane"), [["Ctrl", "I"]]],
+            [qsTr("Show or hide the sidebar"), [["Ctrl", "B"], ["F9"]]],
             [qsTr("Move to the trash"), [["Delete"]]],
             [qsTr("Delete permanently (asks first)"), [["Shift", "Delete"]]],
             [qsTr("Undo / redo"), [["Ctrl", "Z"], ["Ctrl", "Shift", "Z"]]],
@@ -72,7 +73,8 @@ Rectangle {
             [qsTr("Stop the work under way"), [["Escape"]]]
         ]},
         { title: qsTr("View"), shortcuts: [
-            [qsTr("Columns, list or grid"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"]]],
+            [qsTr("Columns, list, grid or panels"), [["Ctrl", "1"], ["Ctrl", "2"], ["Ctrl", "3"], ["Ctrl", "4"]]],
+            [qsTr("In the panels: down, up, into, out"), [["J"], ["K"], ["L"], ["H"]]],
             [qsTr("Bigger, smaller or normal tiles and rows"), [["Ctrl", "="], ["Ctrl", "-"], ["Ctrl", "0"]]],
             [qsTr("Next or previous sort order"), [["S"], ["Shift", "S"]]],
             [qsTr("Show hidden files"), [["Ctrl", "H"]]],

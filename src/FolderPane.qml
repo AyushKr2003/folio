@@ -41,8 +41,11 @@ FocusScope {
         zoom = zoomSteps[Math.max(0, Math.min(zoomSteps.length - 1, (at < 0 ? 1 : at) + step))]
     }
     function cycleView() {
-        viewMode = viewMode === "columns" ? "list" : viewMode === "list" ? "grid" : "columns"
+        viewMode = viewMode === "columns" ? "list" : viewMode === "list" ? "grid" : viewMode === "grid" ? "panels" : "columns"
     }
+    // The columns and the panels take drops in each of their own folders,
+    // have no zoom, and show the selected file's details themselves.
+    readonly property bool paneled: viewMode === "columns" || viewMode === "panels"
 
     // The cursor's item, carried across a switch of view and a re-read of
     // the folder. By path: Recents can list two files of the same name.
@@ -226,6 +229,7 @@ FocusScope {
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
+    Shortcut { sequence: "Ctrl+4"; enabled: pane.active; onActivated: pane.viewMode = "panels" }
     Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
     Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
     Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
@@ -484,7 +488,7 @@ FocusScope {
 
         Item { implicitHeight: 16 }
 
-        // Columns, list or grid: each takes the folder's model and keeps the
+        // Columns, list, grid or panels: each takes the folder's model and keeps the
         // pane's one selection. Loaded by URL so unused views aren't compiled
         // at cold start.
         Loader {
@@ -493,13 +497,14 @@ FocusScope {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: pane.viewMode === "grid" ? 24 : pane.viewMode === "list" ? 20 : 0
-            Layout.rightMargin: pane.viewMode === "columns" ? 0 : 24
+            Layout.rightMargin: pane.paneled ? 0 : 24
             source: pane.viewMode === "list" ? "FolderList.qml"
                   : pane.viewMode === "columns" ? "FolderColumns.qml"
+                  : pane.viewMode === "panels" ? "FolderPanels.qml"
                   : "FolderGrid.qml"
             // A new view picks up the selection the old one had.
             onLoaded: {
-                if (pane.viewMode === "columns")
+                if (pane.paneled)
                     item.detailsPane = pane
                 else
                     item.zoom = Qt.binding(() => pane.zoom)
@@ -515,7 +520,7 @@ FocusScope {
             FolderDrop {
                 anchors.fill: parent
                 z: -1
-                enabled: pane.viewMode !== "columns"
+                enabled: !pane.paneled
                 folder: backend.path
                 items: view.item
             }
@@ -525,7 +530,7 @@ FocusScope {
             // view scrolls.
             WheelHandler {
                 parent: view.item
-                enabled: pane.viewMode !== "columns"
+                enabled: !pane.paneled
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 acceptedModifiers: Qt.ControlModifier
                 // A touchpad sends many small deltas: a step per notch's worth
@@ -558,6 +563,9 @@ FocusScope {
         viewMode: pane.viewMode
         closable: pane.closable
         onCycleView: pane.cycleView()
+        showsSidebarToggle: !!pane.host && !pane.closable && pane.host.sidebarVisible !== undefined
+        sidebarVisible: pane.host ? pane.host.sidebarVisible !== false : true
+        onToggleSidebar: if (pane.host) pane.host.toggleSidebar()
         onCloseRequested: pane.closeRequested()
         // On the rightmost pane's bar. A file chooser is a dialog, not the
         // place to learn Files' keys.

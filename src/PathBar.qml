@@ -23,6 +23,10 @@ Rectangle {
     property bool showsHelp: false
     signal helpRequested()
     signal togglePreview()
+    // The window's first pane has a button for the sidebar beside it.
+    property bool showsSidebarToggle: false
+    property bool sidebarVisible: true
+    signal toggleSidebar()
     signal cycleView()
     signal editDone()
 
@@ -296,12 +300,20 @@ Rectangle {
                 }
             }
         }
+        IconButton {
+            visible: bar.showsSidebarToggle
+            glyph: "sidebar"
+            text: bar.sidebarVisible ? qsTr("Hide the sidebar") : qsTr("Show the sidebar")
+            active: bar.sidebarVisible
+            onClicked: bar.toggleSidebar()
+        }
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
             // Names what a click does, like the buttons beside it.
             text: bar.viewMode === "columns" ? qsTr("Show as list")
                 : bar.viewMode === "list" ? qsTr("Show as grid")
+                : bar.viewMode === "grid" ? qsTr("Show as panels")
                 : qsTr("Show as columns")
             onClicked: bar.cycleView()
         }

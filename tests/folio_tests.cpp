@@ -2442,7 +2442,7 @@ private slots:
         // Drawn dimmer at once in each view, and bright again once a copy takes the clipboard.
         fileOps.cut({home.filePath("cut.txt")});
         std::vector<std::unique_ptr<QObject>> windows;
-        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns"}) {
+        for (const char *view : {"FolderGrid", "FolderList", "FolderColumns", "FolderPanels"}) {
             windows.emplace_back(component.createWithInitialProperties({{"view", view}}));
             QVERIFY2(windows.back(), qPrintable(component.errorString()));
             QTRY_COMPARE(dim(windows.back().get(), "cut.txt"), QString("true"));
@@ -8297,6 +8297,7 @@ private slots:
         QTest::newRow("grid") << QString("FolderGrid");
         QTest::newRow("list") << QString("FolderList");
         QTest::newRow("columns") << QString("FolderColumns");
+        QTest::newRow("panels") << QString("FolderPanels");
     }
 
     void folderKeyboardScrolls()
@@ -8654,6 +8655,7 @@ private slots:
         QTest::newRow("grid") << QString("FolderGrid");
         QTest::newRow("list") << QString("FolderList");
         QTest::newRow("columns") << QString("FolderColumns");
+        QTest::newRow("panels") << QString("FolderPanels");
     }
 
     void rightClickPicksTheItemUnderItWhenScrolled()
@@ -8923,6 +8925,7 @@ private slots:
         QTest::newRow("grid") << QString("FolderGrid");
         QTest::newRow("list") << QString("FolderList");
         QTest::newRow("columns") << QString("FolderColumns");
+        QTest::newRow("panels") << QString("FolderPanels");
     }
 
     void folderViewsKeepNoCacheBuffer()
@@ -8967,7 +8970,7 @@ private slots:
             QMetaObject::invokeMethod(root.get(), "buffers", Q_RETURN_ARG(QVariant, found));
             return found.toList();
         };
-        QTRY_COMPARE(buffers().size(), pane == "FolderColumns" ? 3 : 1);
+        QTRY_COMPARE(buffers().size(), pane == "FolderColumns" || pane == "FolderPanels" ? 3 : 1);
         QCOMPARE(buffers(), QVariantList(buffers().size(), 0));
     }
 
