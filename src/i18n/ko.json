@@ -68,7 +68,7 @@
   "Close the right pane": "오른쪽 창 닫기",
   "Close the window": "창 닫기",
   "Close this pane": "이 패널 닫기",
-  "Columns, list or grid": "열, 목록 또는 격자로",
+  "Columns, list, grid or panels": "열, 목록 또는 격자로",
   "Compress": "압축",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "%Ln개 항목 중 %L1개를 %2로 압축 중…"
@@ -205,6 +205,7 @@
   "Hide": "숨기기",
   "Hide Hidden Files": "숨김 파일 숨기기",
   "Home": "홈",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "폴더 안으로 / 밖으로",
   "Keep Both": "둘 다 유지",
   "Keyboard shortcuts": "키보드 단축키",
@@ -349,6 +350,7 @@
   "Show as columns": "열로 보기",
   "Show as grid": "격자로 보기",
   "Show as list": "목록으로 보기",
+  "Show as panels": "Show as panels",
   "Show hidden files": "숨김 파일 표시",
   "Show in Home": "홈에 표시",
   "Show or hide the details pane": "세부 정보 창 표시 또는 숨기기",

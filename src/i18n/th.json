@@ -68,7 +68,7 @@
   "Close the right pane": "ปิดบานหน้าต่างด้านขวา",
   "Close the window": "ปิดหน้าต่าง",
   "Close this pane": "ปิดบานนี้",
-  "Columns, list or grid": "คอลัมน์ รายการ หรือตาราง",
+  "Columns, list, grid or panels": "คอลัมน์ รายการ หรือตาราง",
   "Compress": "บีบอัด",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "กำลังบีบอัด %L1 จาก %Ln รายการไปยัง %2…"
@@ -205,6 +205,7 @@
   "Hide": "ซ่อน",
   "Hide Hidden Files": "ซ่อนไฟล์ที่ซ่อน",
   "Home": "หน้าแรก",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "เข้าไปในโฟลเดอร์ / กลับออกมา",
   "Keep Both": "เก็บทั้งสอง",
   "Keyboard shortcuts": "แป้นพิมพ์ลัด",
@@ -349,6 +350,7 @@
   "Show as columns": "แสดงแบบคอลัมน์",
   "Show as grid": "แสดงแบบตาราง",
   "Show as list": "แสดงแบบรายการ",
+  "Show as panels": "Show as panels",
   "Show hidden files": "แสดงไฟล์ที่ซ่อนไว้",
   "Show in Home": "แสดงในโฟลเดอร์บ้าน",
   "Show or hide the details pane": "แสดงหรือซ่อนแผงรายละเอียด",

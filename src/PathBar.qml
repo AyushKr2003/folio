@@ -302,6 +302,7 @@ Rectangle {
             // Names what a click does, like the buttons beside it.
             text: bar.viewMode === "columns" ? qsTr("Show as list")
                 : bar.viewMode === "list" ? qsTr("Show as grid")
+                : bar.viewMode === "grid" ? qsTr("Show as panels")
                 : qsTr("Show as columns")
             onClicked: bar.cycleView()
         }

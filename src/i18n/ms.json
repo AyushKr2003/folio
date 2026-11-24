@@ -68,7 +68,7 @@
   "Close the right pane": "Tutup anak tetingkap kanan",
   "Close the window": "Tutup tetingkap",
   "Close this pane": "Tutup anak tetingkap ini",
-  "Columns, list or grid": "Lajur, senarai atau grid",
+  "Columns, list, grid or panels": "Lajur, senarai atau grid",
   "Compress": "Mampatkan",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "Memampatkan %L1 daripada %Ln item ke dalam %2…"
@@ -205,6 +205,7 @@
   "Hide": "Sembunyikan",
   "Hide Hidden Files": "Sembunyikan Fail Tersembunyi",
   "Home": "Rumah",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "Masuk ke folder / keluar semula",
   "Keep Both": "Kekalkan Kedua-duanya",
   "Keyboard shortcuts": "Pintasan papan kekunci",
@@ -349,6 +350,7 @@
   "Show as columns": "Paparkan sebagai lajur",
   "Show as grid": "Paparkan sebagai grid",
   "Show as list": "Paparkan sebagai senarai",
+  "Show as panels": "Show as panels",
   "Show hidden files": "Paparkan fail tersembunyi",
   "Show in Home": "Tunjukkan dalam Laman Utama",
   "Show or hide the details pane": "Paparkan atau sembunyikan panel butiran",

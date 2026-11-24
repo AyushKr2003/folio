@@ -68,7 +68,7 @@
   "Close the right pane": "关闭右侧窗格",
   "Close the window": "关闭窗口",
   "Close this pane": "关闭此窗格",
-  "Columns, list or grid": "分栏、列表或网格",
+  "Columns, list, grid or panels": "分栏、列表或网格",
   "Compress": "压缩",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "正在将第 %L1 个，共 %Ln 个项目压缩到 %2…"
@@ -205,6 +205,7 @@
   "Hide": "隐藏",
   "Hide Hidden Files": "不显示隐藏文件",
   "Home": "主文件夹",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "进入文件夹 / 返回",
   "Keep Both": "保留两者",
   "Keyboard shortcuts": "键盘快捷键",
@@ -349,6 +350,7 @@
   "Show as columns": "显示为列",
   "Show as grid": "显示为网格",
   "Show as list": "显示为列表",
+  "Show as panels": "Show as panels",
   "Show hidden files": "显示隐藏文件",
   "Show in Home": "在主文件夹中显示",
   "Show or hide the details pane": "显示或隐藏详情窗格",

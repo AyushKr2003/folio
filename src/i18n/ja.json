@@ -68,7 +68,7 @@
   "Close the right pane": "右ペインを閉じる",
   "Close the window": "ウィンドウを閉じる",
   "Close this pane": "このペインを閉じる",
-  "Columns, list or grid": "カラム、リスト、グリッド",
+  "Columns, list, grid or panels": "カラム、リスト、グリッド",
   "Compress": "圧縮",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "%Ln 項目のうち %L1 項目を %2 に圧縮中…"
@@ -205,6 +205,7 @@
   "Hide": "隠す",
   "Hide Hidden Files": "隠しファイルを表示しない",
   "Home": "ホーム",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "フォルダーに入る / 戻る",
   "Keep Both": "両方を保持",
   "Keyboard shortcuts": "キーボードショートカット",
@@ -349,6 +350,7 @@
   "Show as columns": "カラム表示",
   "Show as grid": "グリッド表示",
   "Show as list": "リスト表示",
+  "Show as panels": "Show as panels",
   "Show hidden files": "隠しファイルを表示",
   "Show in Home": "ホームに表示",
   "Show or hide the details pane": "詳細ペインの表示を切り替え",

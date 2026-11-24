@@ -68,7 +68,7 @@
   "Close the right pane": "關閉右側窗格",
   "Close the window": "關閉視窗",
   "Close this pane": "關閉此窗格",
-  "Columns, list or grid": "直欄、清單或格狀檢視",
+  "Columns, list, grid or panels": "直欄、清單或格狀檢視",
   "Compress": "壓縮",
   "Compressing %L1 of %Ln items into %2…": {
     "other": "正在將 %Ln 個項目中的第 %L1 個壓縮至 %2…"
@@ -205,6 +205,7 @@
   "Hide": "隱藏",
   "Hide Hidden Files": "隱藏隱藏檔案",
   "Home": "家目錄",
+  "In the panels: down, up, into, out": "In the panels: down, up, into, out",
   "Into a folder / back out": "進入資料夾 / 退出資料夾",
   "Keep Both": "保留兩者",
   "Keyboard shortcuts": "鍵盤捷徑",
@@ -349,6 +350,7 @@
   "Show as columns": "以欄位顯示",
   "Show as grid": "以格狀顯示",
   "Show as list": "以清單顯示",
+  "Show as panels": "Show as panels",
   "Show hidden files": "顯示隱藏檔案",
   "Show in Home": "在家目錄中顯示",
   "Show or hide the details pane": "顯示或隱藏詳細資訊窗格",
