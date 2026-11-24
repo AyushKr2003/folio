@@ -51,13 +51,13 @@ public:
     ~Theme() override;
 
     QColor accent() const { return color("accent"); }
-    QColor accentForeground() const;
+    QColor accentForeground() const { return m_accentForeground; }
     QColor background() const { return color("background"); }
     QColor darkBackground() const { return color("dark_background"); }
-    QColor lighterBackground() const;
+    QColor lighterBackground() const { return m_lighterBackground; }
     QColor foreground() const { return color("foreground"); }
     QColor brightForeground() const { return color("bright_foreground"); }
-    QColor secondaryForeground() const;
+    QColor secondaryForeground() const { return m_secondaryForeground; }
     QColor red() const { return color("red"); }
     QColor yellow() const { return color("yellow"); }
     QColor blue() const { return color("blue"); }
@@ -66,9 +66,9 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
-    QColor tooltipBackground() const;
-    QColor tooltipForeground() const;
-    QColor folderFill() const;
+    QColor tooltipBackground() const { return m_tooltipBackground; }
+    QColor tooltipForeground() const { return m_tooltipForeground; }
+    QColor folderFill() const { return m_folderFill; }
     QString fontFamily() const { return m_fontFamily; }
     qreal textScale() const { return m_textScale; }
 
@@ -90,14 +90,21 @@ signals:
 
 private:
     QColor color(const QString &key) const;
+    void recomputeColors();
     void reload();
     void refreshRounding();
-    void readSystemFont();
+    void readSystemFont(bool reloadConfig = true);
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
     bool m_light = false;
+    QColor m_lighterBackground;
+    QColor m_accentForeground;
+    QColor m_secondaryForeground;
+    QColor m_tooltipBackground;
+    QColor m_tooltipForeground;
+    QColor m_folderFill;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QString m_hyprctl;

@@ -6,10 +6,16 @@
 
 #include "backend.h"
 #include "fileops.h"
+#include "foreignparent.h"
+
+static void initQmlCache() {
+    Q_INIT_RESOURCE(qmlcache_folio_core);
+}
 
 Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
-    : QObject(parent), m_engine(engine), m_plugins(plugins), m_component(engine, QUrl("qrc:/Main.qml")),
-      m_pane(engine, QUrl("qrc:/FolderPane.qml")) {
+    : QObject(parent), m_engine(engine), m_plugins(plugins),
+      m_component((initQmlCache(), engine), QUrl("qrc:/FolioUI/Main.qml")),
+      m_pane(engine, QUrl("qrc:/FolioUI/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
     engine->rootContext()->setContextProperty("windows", this);
     // Only a file chooser's windows have one.
@@ -40,13 +46,15 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent, Q
     return pane;
 }
 
-Backend *Windows::open(const QString &folder, const QString &select, QObject *chooser) {
+Backend *Windows::open(const QString &folder, const QString &select, QObject *chooser, const QString &parentWindow) {
     Pane main = makePane(m_component, m_engine->rootContext(), chooser);
     auto *window = qobject_cast<QQuickWindow *>(main.item);
     if (!window) {
         release(main);
         return nullptr;
     }
+    if (!parentWindow.isEmpty())
+        ForeignParent::attach(window, parentWindow);
     m_windows.prepend({main, {}});
 
     // Whichever window was used last answers "Show in folder".

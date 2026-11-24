@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Folio 1.0
 
 // The folder as a grid of tiles with real previews.
 GridView {
@@ -45,6 +46,11 @@ GridView {
             return Qt.rect(x + 14, Math.floor(i / grid.columns) * grid.cellHeight + 12,
                            grid.cellWidth - 28, grid.cellHeight - 24)
         }
+        rangeFor: (area) => {
+            const firstRow = Math.max(0, Math.floor(area.y / grid.cellHeight))
+            const lastRow = Math.floor((area.y + area.height) / grid.cellHeight)
+            return [firstRow * grid.columns, Math.min(grid.count - 1, (lastRow + 1) * grid.columns - 1)]
+        }
     }
 
     // Right-click on an item (selecting it) or on empty space.
@@ -65,8 +71,13 @@ GridView {
     // still scroll, which turning the view's interactive off would stop too.
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
+    flickDeceleration: 1800
+    maximumFlickVelocity: 5000
+    KineticScroll { target: grid }
     // No cache buffer, as in FileListView.
     cacheBuffer: 0
+    // Tiles scrolled out are reused for incoming items when scrolling large grids.
+    reuseItems: true
     model: backend.folder
     // Tiles grow with the zoom; the name and details under them don't. A
     // narrow pane (one side of a split) caps it at a tile its width holds.

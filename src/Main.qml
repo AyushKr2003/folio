@@ -55,7 +55,14 @@ ApplicationWindow {
     property bool helpVisible: false
     // The shortcuts take the keyboard while they're shown, and give it back
     // to the files.
-    onHelpVisibleChanged: helpVisible ? help.forceActiveFocus() : activePane.focusView()
+    onHelpVisibleChanged: {
+        if (helpVisible) {
+            if (help.item)
+                help.item.forceActiveFocus()
+        } else {
+            activePane.focusView()
+        }
+    }
     // Columns on a first launch; after that, whichever view was used last.
     property string viewMode: "columns"
     property real zoom: 1
@@ -209,11 +216,17 @@ ApplicationWindow {
             sourceComponent: ChooserBar { pane: win.activePane }
         }
 
-        HelpOverlay {
+        Loader {
             id: help
             anchors.fill: parent
-            visible: win.helpVisible
-            onDismissed: win.helpVisible = false
+            active: win.helpVisible
+            visible: active
+            source: "HelpOverlay.qml"
+            onLoaded: item.forceActiveFocus()
+        }
+        Connections {
+            target: help.item
+            function onDismissed() { win.helpVisible = false }
         }
     }
 }

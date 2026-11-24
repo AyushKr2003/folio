@@ -123,6 +123,9 @@ Item {
         contentWidth: Math.max(width, row.width, view.hiddenWidth + width)
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
+        flickDeceleration: 1800
+        maximumFlickVelocity: 5000
+        KineticScroll { target: flick; horizontal: true }
         onContentXChanged: Qt.callLater(view.loadColumns)
         onContentWidthChanged: view.revealEnd()
         onWidthChanged: view.revealEnd()
@@ -198,6 +201,7 @@ Item {
             // The folder being shown: its selection is the window's.
             FileListView {
                 id: here
+                function letGo() { view.letGo() }
                 width: view.columnWidth
                 height: row.height
                 focus: true
@@ -212,6 +216,14 @@ Item {
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
+                }
+                Band {
+                    view: here
+                    rectOf: (i) => Qt.rect(0, i * 32, here.width, 32)
+                    rangeFor: (area) => [
+                        Math.max(0, Math.floor(area.y / 32)),
+                        Math.min(here.count - 1, Math.floor((area.y + area.height) / 32))
+                    ]
                 }
                 ColumnDrop { items: here; folder: backend.path }
 
@@ -284,19 +296,24 @@ Item {
             }
 
             // The selected file's details, where a folder would show what's
-            // inside, filling the rest of the width.
+            // inside, filling the rest of the width. Loaded by URL so
+            // PreviewPane isn't compiled until a file is selected.
             Loader {
                 id: detailsColumn
                 active: !!view.detailsPane && view.selected.path !== undefined && view.selected.isDir !== true
                 visible: active
-                sourceComponent: PreviewPane {
+                source: "PreviewPane.qml"
+                onLoaded: {
                     // All the room right of the columns in sight, and no
                     // narrower than it reads well.
-                    width: Math.max(300, flick.width - (trail.count - view.hidden + 1) * (view.columnWidth + 1))
-                    height: row.height
-                    folderPane: view.detailsPane
-                    onFinished: view.focusView()
+                    item.width = Qt.binding(() => Math.max(300, flick.width - (trail.count - view.hidden + 1) * (view.columnWidth + 1)))
+                    item.height = Qt.binding(() => row.height)
+                    item.folderPane = Qt.binding(() => view.detailsPane)
                 }
+            }
+            Connections {
+                target: detailsColumn.item
+                function onFinished() { view.focusView() }
             }
         }
     }

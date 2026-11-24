@@ -90,11 +90,13 @@ Item {
         }
     }
 
-    Image {
+    Loader {
         anchors.fill: parent
-        visible: glyph.picture
-        source: glyph.picture ? "image://plugin-icon/" + String(glyph.color).slice(-6) + "/" + encodeURIComponent(glyph.name) : ""
-        sourceSize: Qt.size(glyph.size * Screen.devicePixelRatio, glyph.size * Screen.devicePixelRatio)
+        active: glyph.picture
+        sourceComponent: Image {
+            source: "image://plugin-icon/" + String(glyph.color).slice(-6) + "/" + encodeURIComponent(glyph.name)
+            sourceSize: Qt.size(glyph.size * Screen.devicePixelRatio, glyph.size * Screen.devicePixelRatio)
+        }
     }
 
     Shape {

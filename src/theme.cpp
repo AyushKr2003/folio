@@ -181,6 +181,7 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl, 
                 refreshRounding();
         });
     }
+    recomputeColors();
     reload();
 }
 
@@ -216,48 +217,28 @@ QColor Theme::color(const QString &key) const {
     return fallbackColors().value(key, QColor("#888888"));
 }
 
-// Folder cards, tiles and panels are drawn in the lighter background. Some
-// themes set it to the background itself (or leave it out), which would make
-// them invisible, so then it's the background nudged toward the foreground.
-QColor Theme::lighterBackground() const {
-    const QColor lighter = color("lighter_background");
+// Derived colors are computed once per palette load so QML bindings don't
+// rerun luminance and WCAG contrast bisection on every tile or tooltip read.
+void Theme::recomputeColors() {
     const QColor bg = background();
-    const double gap = qAbs(luminance(lighter) - luminance(bg));
-    if (gap > 0.004)
-        return lighter;
-    return mix(bg, foreground(), 0.08);
-}
-
-// Black or white, whichever reads on the accent (WCAG relative luminance).
-QColor Theme::accentForeground() const {
-    return luminance(accent()) > .179 ? QColor("black") : QColor("white");
-}
-
-// Themes' own dim foregrounds are often too faint for small text, so derive a
-// secondary color by mixing the foreground toward the background, keeping
-// roughly a 4.5:1 contrast for metadata and labels.
-QColor Theme::secondaryForeground() const {
-    return mix(background(), foreground(), 0.68);
-}
-
-// A tooltip is a small surface over the pane. Take the theme's own step away
-// from it - darker in light themes, lighter in dark ones - and lift it just
-// enough to read as a card. Material's ToolTip forces its own dark gray, which
-// leaves a light theme's text unreadable on it.
-QColor Theme::tooltipBackground() const {
-    const QColor base = light() ? darkBackground() : lighterBackground();
-    return ensureRatio(base, background(), surfaceFloor);
-}
-
-// Tooltip words: the theme's foreground, raised to textFloor on that surface.
-QColor Theme::tooltipForeground() const {
-    return ensureRatio(foreground(), tooltipBackground(), textFloor);
-}
-
-// A folder card's fill: the lighter background, raised to surfaceFloor so the
-// card stands off the pane on themes where the two nearly match (#24).
-QColor Theme::folderFill() const {
-    return ensureRatio(lighterBackground(), background(), surfaceFloor);
+    const QColor fg = foreground();
+    const QColor lighter = color("lighter_background");
+    m_lighterBackground = qAbs(luminance(lighter) - luminance(bg)) > 0.004 ? lighter : mix(bg, fg, 0.08);
+    // Black or white, whichever reads on the accent (WCAG relative luminance).
+    m_accentForeground = luminance(accent()) > midLuminance ? QColor("black") : QColor("white");
+    // Themes' own dim foregrounds are often too faint for small text, so derive a
+    // secondary color by mixing the foreground toward the background, keeping
+    // roughly a 4.5:1 contrast for metadata and labels.
+    m_secondaryForeground = mix(bg, fg, 0.68);
+    // A tooltip is a small surface over the pane: darker in light themes,
+    // lighter in dark ones, lifted just enough to read as a card.
+    const QColor tipBase = m_light ? darkBackground() : m_lighterBackground;
+    m_tooltipBackground = ensureRatio(tipBase, bg, surfaceFloor);
+    // Tooltip words: the theme's foreground, raised to textFloor on that surface.
+    m_tooltipForeground = ensureRatio(fg, m_tooltipBackground, textFloor);
+    // A folder card's fill: the lighter background, raised to surfaceFloor so the
+    // card stands off the pane on themes where the two nearly match (#24).
+    m_folderFill = ensureRatio(m_lighterBackground, bg, surfaceFloor);
 }
 
 void Theme::reload() {
@@ -283,6 +264,7 @@ void Theme::reload() {
     if (palette.colors != m_colors || palette.light != m_light) {
         m_colors = palette.colors;
         m_light = palette.light;
+        recomputeColors();
         emit changed();
     }
 }
@@ -298,13 +280,7 @@ qreal Theme::textScaleFor(qreal points) {
     return points > 0 ? std::clamp(points / designPoints, 0.75, 1.5) : 1.0;
 }
 
-QString Theme::resolveFamily(const QString &family) {
-    // Asked of a configuration loaded afresh, rather than of the one Qt read
-    // when Folio started, so a choice made since (omarchy-font-set) counts,
-    // and Qt's own is left alone.
-    FcConfig *config = FcInitLoadConfigAndFonts();
-    if (!config)
-        return family;
+static QString matchFamily(FcConfig *config, const QString &family) {
     QString resolved = family;
     if (FcPattern *pattern = FcNameParse(reinterpret_cast<const FcChar8 *>(family.toUtf8().constData()))) {
         FcConfigSubstitute(config, pattern, FcMatchPattern);
@@ -318,6 +294,17 @@ QString Theme::resolveFamily(const QString &family) {
         }
         FcPatternDestroy(pattern);
     }
+    return resolved;
+}
+
+QString Theme::resolveFamily(const QString &family) {
+    // Asked of a configuration loaded afresh, rather than of the one Qt read
+    // when Folio started, so a choice made since (omarchy-font-set) counts,
+    // and Qt's own is left alone.
+    FcConfig *config = FcInitLoadConfigAndFonts();
+    if (!config)
+        return family;
+    const QString resolved = matchFamily(config, family);
     FcConfigDestroy(config);
     return resolved;
 }
@@ -325,7 +312,7 @@ QString Theme::resolveFamily(const QString &family) {
 void Theme::followSystemFont() {
     m_fontDebounce.setSingleShot(true);
     m_fontDebounce.setInterval(200);
-    connect(&m_fontDebounce, &QTimer::timeout, this, &Theme::readSystemFont);
+    connect(&m_fontDebounce, &QTimer::timeout, this, [this] { readSystemFont(true); });
     // omarchy-font-set writes the user's fontconfig file; its folder is
     // watched too, for when it's made.
     const QString fontconfig = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/fontconfig";
@@ -342,7 +329,9 @@ void Theme::followSystemFont() {
     connect(&m_fontWatcher, &QFileSystemWatcher::fileChanged, this, [this] { m_fontDebounce.start(); });
     // The platform theme (qtengine) tells each window when its fonts change.
     qApp->installEventFilter(this);
-    readSystemFont();
+    // At startup Qt has already loaded the current fontconfig; only live
+    // changes need to parse fontconfig and all system fonts afresh.
+    readSystemFont(false);
 }
 
 bool Theme::eventFilter(QObject *watched, QEvent *event) {
@@ -351,9 +340,15 @@ bool Theme::eventFilter(QObject *watched, QEvent *event) {
     return QObject::eventFilter(watched, event);
 }
 
-void Theme::readSystemFont() {
+void Theme::readSystemFont(bool reloadConfig) {
     const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    const QString family = resolveFamily(fixed.family());
+    QString family;
+    if (!reloadConfig) {
+        if (FcConfig *current = FcConfigGetCurrent())
+            family = matchFamily(current, fixed.family());
+    }
+    if (family.isEmpty())
+        family = resolveFamily(fixed.family());
     const qreal scale = textScaleFor(fixed.pointSizeF());
     QFont font(family);
     font.setStyleHint(QFont::Monospace);
