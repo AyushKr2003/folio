@@ -45,10 +45,10 @@ Item {
     readonly property string hereName: hasParent ? shownPath.replace(/\/+$/, "").split("/").pop() : ""
     readonly property var selected: here.currentIndex >= 0 ? (backend.folder.count, backend.folder.get(here.currentIndex)) : ({})
 
-    // yazi's proportions: a narrow parent, then the current folder and the
-    // preview sharing the rest.
-    readonly property int parentWidth: Math.round(Math.max(160, width * 0.18))
-    readonly property int hereWidth: Math.round(Math.max(240, (width - parentWidth) * 0.45))
+    // The three panels share the width equally (less the two separators);
+    // the preview takes what rounding leaves.
+    readonly property int parentWidth: Math.floor((width - 2) / 3)
+    readonly property int hereWidth: parentWidth
 
     function enter() {
         if (!selected.path)
