@@ -69,6 +69,9 @@ ApplicationWindow {
     // details as their last column). Ctrl+I or the path bar's button.
     property bool previewVisible: true
     property real zoom: 1
+    // The places on the left: Ctrl+B, F9 or the left pane's button hides
+    // them for more room, and shows them again.
+    property bool sidebarVisible: true
     // Whether the window is wide enough for the details pane at all.
     readonly property bool detailsFit: width >= (split ? 1400 : 960)
     readonly property bool detailsShown: previewVisible && detailsFit && !!activePane && activePane.viewMode === "grid"
@@ -94,6 +97,7 @@ ApplicationWindow {
         property alias viewMode: win.viewMode
         property alias zoom: win.zoom
         property alias previewVisible: win.previewVisible
+        property alias sidebarVisible: win.sidebarVisible
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -128,6 +132,14 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; enabled: !win.typing; onActivated: win.previewVisible = !win.previewVisible }
+    Shortcut { sequences: ["Ctrl+B", "F9"]; enabled: !win.typing; onActivated: win.toggleSidebar() }
+    // Hidden with the keyboard in it, the keyboard goes back to the files.
+    function toggleSidebar() {
+        const had = sidebar.activeFocus
+        sidebarVisible = !sidebarVisible
+        if (!sidebarVisible && had)
+            activePane.focusView()
+    }
     // Tab moves the keyboard: sidebar, left pane and its details column
     // (while there's an app to pick there), right pane and its details, and
     // around. Shift+Tab goes back.
@@ -138,7 +150,7 @@ ApplicationWindow {
         const bar = chooserBar.item
         // Each pane, then its details, the same way round whichever has the
         // keyboard.
-        const stops = [sidebar]
+        const stops = sidebarVisible ? [sidebar] : []
         const details = []
         for (const pane of split ? [leftPane, rightPane] : [leftPane]) {
             stops.push(pane)
@@ -199,15 +211,16 @@ ApplicationWindow {
                 onDeleteRequested: (path) => win.activePane.confirmDelete([path])
                 onTrashRequested: (path) => win.activePane.paneFileOps.trash([path])
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
+                visible: win.sidebarVisible
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 190
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
+            Rectangle { visible: win.sidebarVisible; Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
 
             FolderPane {
                 id: leftPane
-                barLeft: sidebar.width + 1
+                barLeft: win.sidebarVisible ? sidebar.width + 1 : 0
                 barExtension: win.split ? 0 : win.detailsWidth
                 Layout.fillWidth: true
                 Layout.fillHeight: true

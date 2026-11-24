@@ -563,6 +563,9 @@ FocusScope {
         viewMode: pane.viewMode
         closable: pane.closable
         onCycleView: pane.cycleView()
+        showsSidebarToggle: !!pane.host && !pane.closable && pane.host.sidebarVisible !== undefined
+        sidebarVisible: pane.host ? pane.host.sidebarVisible !== false : true
+        onToggleSidebar: if (pane.host) pane.host.toggleSidebar()
         onCloseRequested: pane.closeRequested()
         // On the rightmost pane's bar. A file chooser is a dialog, not the
         // place to learn Files' keys.

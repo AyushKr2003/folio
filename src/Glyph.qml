@@ -74,6 +74,7 @@ Item {
         case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
         // A narrow parent, the folder, and a preview with lines of text.
         case "panels": return box(3, 4, 18, 16, r) + "M7 4v16M12 4v16M14.5 9h4M14.5 12h4M14.5 15h2.5"
+        case "sidebar": return box(3, 5, 18, 14, r) + "M9 5v14"
         case "preview": return box(3, 5, 18, 14, r) + "M14 5v14"
         // One per sort order: a slim arrow on the left (down for the usual
         // direction, up for oldest first), and what it sorts by on the right,

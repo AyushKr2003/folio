@@ -64,6 +64,7 @@ Rectangle {
             [qsTr("New folder"), [["Ctrl", "Shift", "N"]]],
             [qsTr("Preview the selected file"), [["Space"]]],
             [qsTr("Show or hide the details pane"), [["Ctrl", "I"]]],
+            [qsTr("Show or hide the sidebar"), [["Ctrl", "B"], ["F9"]]],
             [qsTr("Move to the trash"), [["Delete"]]],
             [qsTr("Delete permanently (asks first)"), [["Shift", "Delete"]]],
             [qsTr("Undo / redo"), [["Ctrl", "Z"], ["Ctrl", "Shift", "Z"]]],
