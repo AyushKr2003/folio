@@ -44,6 +44,40 @@ static QString startPath(const QStringList &args, QString *select) {
     return QDir::homePath();
 }
 
+// `folio [--view grid|list|columns|panels] [--sidebar|--no-sidebar] [PATH]`:
+// the options are taken out of `args`, leaving the path where startPath()
+// looks for it, and go into `options` as the window's properties. Returns
+// false, having said why, for an option it doesn't know.
+static bool takeOptions(QStringList &args, QVariantMap *options) {
+    static const QStringList views{"grid", "list", "columns", "panels"};
+    const char *usage = "usage: folio [--view grid|list|columns|panels] [--sidebar|--no-sidebar] [PATH]\n";
+    QStringList rest{args.value(0)};
+    for (int i = 1; i < args.size(); ++i) {
+        const QString arg = args.at(i);
+        if (arg == "--help" || arg == "-h") {
+            printf("%s", usage);
+            return false;
+        }
+        if (arg == "--sidebar" || arg == "--no-sidebar") {
+            options->insert("sidebarVisible", arg == "--sidebar");
+        } else if (arg == "--view" || arg.startsWith("--view=")) {
+            const QString view = arg == "--view" ? args.value(++i) : arg.mid(7);
+            if (!views.contains(view)) {
+                fprintf(stderr, "folio: unknown view \"%s\"\n%s", qPrintable(view), usage);
+                return false;
+            }
+            options->insert("viewMode", view);
+        } else if (arg.startsWith("--")) {
+            fprintf(stderr, "folio: unknown option %s\n%s", qPrintable(arg), usage);
+            return false;
+        } else {
+            rest << arg;
+        }
+    }
+    args = rest;
+    return true;
+}
+
 static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     // Settings (the chosen view) go to ~/.config/folio/folio.conf.
@@ -199,10 +233,14 @@ int main(int argc, char *argv[]) {
         return app.exec();
     }
 
+    QStringList args = app.arguments();
+    QVariantMap options;
+    if (!takeOptions(args, &options))
+        return args.contains("--help") || args.contains("-h") ? 0 : 2;
     Windows *windows = ensureSession();
     QString select;
-    const QString start = startPath(app.arguments(), &select);
-    if (!windows->open(start, select))
+    const QString start = startPath(args, &select);
+    if (!windows->open(start, select, nullptr, {}, options))
         return 1;
     FileManager1::registerOn(windows);
 

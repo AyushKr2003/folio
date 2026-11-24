@@ -3,6 +3,7 @@
 #include <QList>
 #include <QObject>
 #include <QQmlComponent>
+#include <QVariantMap>
 
 class Backend;
 class FileOps;
@@ -24,9 +25,11 @@ public:
     // Opens a window on a folder, or on a file's folder with it selected;
     // with a `chooser`, a file chooser's window, answering it (and attached as
     // transient-for `parentWindow` when given). Null if the interface failed
-    // to load (the errors are on stderr).
+    // to load (the errors are on stderr). `options` are set on the window
+    // as it opens (from the command line: its view, whether the sidebar
+    // shows), after what it remembers, so they're remembered in turn.
     Backend *open(const QString &folder, const QString &select = {}, QObject *chooser = nullptr,
-                  const QString &parentWindow = {});
+                  const QString &parentWindow = {}, const QVariantMap &options = {});
 
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
