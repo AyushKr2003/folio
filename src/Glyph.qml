@@ -13,10 +13,15 @@ Item {
     property color color: theme.foreground
     property real size: 18
     property real stroke: 1.6
+    // UI glyphs follow the desktop text size; icons inside a pre-scaled art
+    // box (such as grid tiles) or fixed hero previews opt out to avoid
+    // scaling twice.
+    property bool scaled: true
+    readonly property real effectiveSize: scaled ? Math.round(size * theme.textScale) : size
     readonly property bool picture: name.endsWith(".svg")
 
-    implicitWidth: size
-    implicitHeight: size
+    implicitWidth: effectiveSize
+    implicitHeight: effectiveSize
 
     function circle(cx, cy, r) {
         return "M" + (cx - r) + " " + cy + "a" + r + " " + r + " 0 1 0 " + (2 * r) + " 0a" + r + " " + r + " 0 1 0 " + (-2 * r) + " 0"
@@ -95,7 +100,7 @@ Item {
         active: glyph.picture
         sourceComponent: Image {
             source: "image://plugin-icon/" + String(glyph.color).slice(-6) + "/" + encodeURIComponent(glyph.name)
-            sourceSize: Qt.size(glyph.size * Screen.devicePixelRatio, glyph.size * Screen.devicePixelRatio)
+            sourceSize: Qt.size(glyph.effectiveSize * Screen.devicePixelRatio, glyph.effectiveSize * Screen.devicePixelRatio)
         }
     }
 
@@ -110,7 +115,7 @@ Item {
             strokeWidth: glyph.stroke
             capStyle: theme.radius > 0 ? ShapePath.RoundCap : ShapePath.SquareCap
             joinStyle: theme.radius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
-            scale: Qt.size(glyph.size / 24, glyph.size / 24)
+            scale: Qt.size(glyph.effectiveSize / 24, glyph.effectiveSize / 24)
             PathSvg { path: glyph.path }
         }
     }

@@ -10,7 +10,8 @@ Item {
     id: view
 
     property alias currentIndex: here.currentIndex
-    readonly property int columnWidth: 260
+    readonly property int columnWidth: Math.round(260 * theme.textScale)
+    readonly property int rowHeight: Math.round(32 * theme.textScale)
     // The pane whose selected file the details column describes.
     property var detailsPane: null
     readonly property var details: detailsColumn.item
@@ -19,7 +20,7 @@ Item {
     signal cursorLetGo()
     function letGo() { selecting.letGo(); cursorLetGo() }
 
-    Selecting { id: selecting; view: here; pageStep: Math.max(1, Math.floor(here.height / 32) - 1) }
+    Selecting { id: selecting; view: here; pageStep: Math.max(1, Math.floor(here.height / view.rowHeight) - 1) }
     function focusView() { here.forceActiveFocus() }
     // The preview's ↑ and ↓: the row above or below in the current column.
     function stepRow(direction) { direction < 0 ? here.decrementCurrentIndex() : here.incrementCurrentIndex() }
@@ -219,10 +220,10 @@ Item {
                 }
                 Band {
                     view: here
-                    rectOf: (i) => Qt.rect(0, i * 32, here.width, 32)
+                    rectOf: (i) => Qt.rect(0, i * view.rowHeight, here.width, view.rowHeight)
                     rangeFor: (area) => [
-                        Math.max(0, Math.floor(area.y / 32)),
-                        Math.min(here.count - 1, Math.floor((area.y + area.height) / 32))
+                        Math.max(0, Math.floor(area.y / view.rowHeight)),
+                        Math.min(here.count - 1, Math.floor((area.y + area.height) / view.rowHeight))
                     ]
                 }
                 ColumnDrop { items: here; folder: backend.path }
@@ -244,7 +245,8 @@ Item {
 
                 // Where the first item would be, lined up with the names.
                 FolioText {
-                    x: LayoutMirroring.enabled ? here.width - width - 46 : 46
+                    readonly property int nameInset: 14 + Math.round(20 * theme.textScale) + 12
+                    x: LayoutMirroring.enabled ? here.width - width - nameInset : nameInset
                     y: 8
                     readonly property bool searching: backend.folder.loading && backend.folder.query.length > 0
                     visible: here.count === 0 && (!backend.folder.loading || searching) && backend.folder.error.length === 0
@@ -287,7 +289,8 @@ Item {
                 }
 
                 FolioText {
-                    x: LayoutMirroring.enabled ? inside.width - width - 46 : 46
+                    readonly property int nameInset: 14 + Math.round(20 * theme.textScale) + 12
+                    x: LayoutMirroring.enabled ? inside.width - width - nameInset : nameInset
                     y: 8
                     visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("No items")

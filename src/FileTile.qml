@@ -266,7 +266,7 @@ Item {
                     width: 30; height: 30
                     radius: Math.min(4, theme.radius)
                     color: Qt.alpha(theme.darkBackground, 0.75)
-                    Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
+                    Glyph { anchors.centerIn: parent; name: "play"; size: 16; scaled: false; color: theme.brightForeground }
                 }
             }
 
@@ -318,6 +318,7 @@ Item {
                 anchors.centerIn: parent
                 name: tile.icon
                 size: 76
+                scaled: false
                 stroke: 1.2
                 color: tile.current ? theme.accent : hover.hovered ? tile.hoverColor : theme.foreground
             }
@@ -352,7 +353,7 @@ Item {
                 width: badge.implicitWidth + 8
                 height: badge.implicitHeight + 2
                 color: tile.kindColor
-                FolioText { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); textFormat: Text.PlainText; size: 9; font.bold: true; color: theme.background }
+                Text { id: badge; anchors.centerIn: parent; text: tile.extension.slice(0, 4); textFormat: Text.PlainText; font.family: theme.fontFamily; font.pixelSize: 9; font.bold: true; color: theme.background }
             }
         }
     }
@@ -383,7 +384,7 @@ Item {
                     }
                 }
             }
-            FolioText { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; size: 9; color: theme.secondaryForeground }
+            Text { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 5; text: tile.extension; textFormat: Text.PlainText; font.family: theme.fontFamily; font.pixelSize: 9; color: theme.secondaryForeground }
         }
     }
 
@@ -393,7 +394,7 @@ Item {
         Rectangle {
             color: theme.darkBackground
             radius: tile.iconRadius
-            Glyph { anchors.centerIn: parent; name: "play"; size: 22; color: tile.kindColor }
+            Glyph { anchors.centerIn: parent; name: "play"; size: 22; scaled: false; color: tile.kindColor }
         }
     }
 }

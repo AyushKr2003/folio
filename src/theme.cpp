@@ -1,6 +1,10 @@
 // Theme watching follows Omacut (MIT, David Heinemeier Hansson).
 #include "theme.h"
 
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDir>
 #include <QEvent>
 #include <QFontDatabase>
@@ -120,7 +124,8 @@ Palette readPalette(const QString &path) {
 
 Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl, const QString &events)
     : QObject(parent),
-      m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory) {
+      m_directory(directory.isEmpty() ? QDir::homePath() + "/.local/state/omarchy/current" : directory),
+      m_liveDesktop(directory.isEmpty()) {
     m_fontFamily = QGuiApplication::font().family();
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(80);
@@ -254,7 +259,8 @@ void Theme::reload() {
     while (!QFileInfo::exists(ancestor) && ancestor != "/")
         ancestor = QFileInfo(ancestor).absolutePath();
     QStringList candidates{ancestor, QFileInfo(ancestor).absolutePath(), m_directory,
-                           m_directory + "/theme", m_directory + "/theme/colors.toml"};
+                           m_directory + "/theme", m_directory + "/theme/colors.toml",
+                           m_directory + "/theme/shell.toml"};
     candidates.removeDuplicates();
     for (const auto &path : candidates)
         if (QFileInfo::exists(path))
@@ -267,6 +273,8 @@ void Theme::reload() {
         recomputeColors();
         emit changed();
     }
+    if (m_followingFont)
+        readSystemFont(false);
 }
 
 // Folio's text sizes are drawn for Omarchy's default text size, 11pt, at
@@ -275,9 +283,39 @@ void Theme::reload() {
 // hold their text.
 static constexpr qreal designPoints = 11;
 static constexpr int designPixels = 13;
+// Omarchy's shell text size (`omarchy display text size`) anchors 12px == 1.0.
+static constexpr qreal shellDefaultPixels = 12;
 
 qreal Theme::textScaleFor(qreal points) {
     return points > 0 ? std::clamp(points / designPoints, 0.75, 1.5) : 1.0;
+}
+
+qreal Theme::shellTextScale(const QString &shellConfig) {
+    QFile file(shellConfig);
+    if (!file.open(QIODevice::ReadOnly))
+        return 0;
+    bool inFont = false;
+    while (!file.atEnd()) {
+        QString line = QString::fromUtf8(file.readLine());
+        if (const qsizetype comment = line.indexOf('#'); comment >= 0)
+            line.truncate(comment);
+        line = line.trimmed();
+        if (line.isEmpty())
+            continue;
+        if (line.startsWith('[')) {
+            inFont = (line == QLatin1String("[font]"));
+            continue;
+        }
+        if (!inFont)
+            continue;
+        const qsizetype eq = line.indexOf('=');
+        if (eq < 0 || line.left(eq).trimmed() != QLatin1String("base-size"))
+            continue;
+        bool ok = false;
+        const qreal pixels = line.mid(eq + 1).trimmed().toDouble(&ok);
+        return ok && pixels > 0 ? std::clamp(pixels / shellDefaultPixels, 0.75, 1.5) : 0;
+    }
+    return 0;
 }
 
 static QString matchFamily(FcConfig *config, const QString &family) {
@@ -309,10 +347,83 @@ QString Theme::resolveFamily(const QString &family) {
     return resolved;
 }
 
+void Theme::watchShellConfig() {
+    const auto paths = m_shellWatcher.files() + m_shellWatcher.directories();
+    if (!paths.isEmpty())
+        m_shellWatcher.removePaths(paths);
+    // omarchy-display-text-size replaces ~/.config/omarchy/shell.toml via
+    // atomic rename (mktemp + mv), so watch the directory (or nearest existing
+    // ancestor when Omarchy's config dir isn't made yet) and re-arm after
+    // every change.
+    const QString omarchyDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/omarchy";
+    const QString shellFile = omarchyDir + "/shell.toml";
+    QString ancestor = omarchyDir;
+    while (!QFileInfo::exists(ancestor) && ancestor != "/")
+        ancestor = QFileInfo(ancestor).absolutePath();
+    QStringList candidates{ancestor, omarchyDir, shellFile};
+    candidates.removeDuplicates();
+    for (const auto &path : candidates)
+        if (QFileInfo::exists(path))
+            m_shellWatcher.addPath(path);
+}
+
+bool Theme::applyPortalTextScale(const QDBusVariant &value) {
+    QVariant unwrapped = value.variant();
+    // Settings.Read wraps its answer in a second variant; SettingChanged does not.
+    while (unwrapped.userType() == qMetaTypeId<QDBusVariant>())
+        unwrapped = unwrapped.value<QDBusVariant>().variant();
+    bool ok = false;
+    const qreal factor = unwrapped.toDouble(&ok);
+    if (!ok || factor <= 0 || qFuzzyCompare(factor, m_portalTextScale))
+        return false;
+    m_portalTextScale = factor;
+    return true;
+}
+
+void Theme::readPortalTextScale() {
+    // `folio chooser` runs with QT_QPA_PLATFORMTHEME=generic so it never talks
+    // to xdg-desktop-portal while the portal is starting it up; isolated test
+    // Themes (with an explicit directory) stay independent of the host portal.
+    if (!m_liveDesktop || qEnvironmentVariable("QT_QPA_PLATFORMTHEME") == QLatin1String("generic"))
+        return;
+    auto bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+        return;
+    bus.connect(QStringLiteral("org.freedesktop.portal.Desktop"),
+                QStringLiteral("/org/freedesktop/portal/desktop"),
+                QStringLiteral("org.freedesktop.portal.Settings"),
+                QStringLiteral("SettingChanged"),
+                this,
+                SLOT(portalSettingChanged(QString, QString, QDBusVariant)));
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.portal.Desktop"),
+        QStringLiteral("/org/freedesktop/portal/desktop"),
+        QStringLiteral("org.freedesktop.portal.Settings"),
+        QStringLiteral("Read"));
+    call << QStringLiteral("org.gnome.desktop.interface") << QStringLiteral("text-scaling-factor");
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        const QDBusPendingReply<QDBusVariant> reply = *watcher;
+        if (reply.isValid() && applyPortalTextScale(reply.value()))
+            readSystemFont(false);
+    });
+}
+
+void Theme::portalSettingChanged(const QString &ns, const QString &key, const QDBusVariant &value) {
+    if (ns != QLatin1String("org.gnome.desktop.interface") || key != QLatin1String("text-scaling-factor"))
+        return;
+    if (applyPortalTextScale(value) && m_followingFont)
+        m_fontDebounce.start();
+}
+
 void Theme::followSystemFont() {
+    m_followingFont = true;
     m_fontDebounce.setSingleShot(true);
-    m_fontDebounce.setInterval(200);
-    connect(&m_fontDebounce, &QTimer::timeout, this, [this] { readSystemFont(true); });
+    m_fontDebounce.setInterval(80);
+    connect(&m_fontDebounce, &QTimer::timeout, this, [this] {
+        readSystemFont(std::exchange(m_reloadFontconfig, false));
+    });
     // omarchy-font-set writes the user's fontconfig file; its folder is
     // watched too, for when it's made.
     const QString fontconfig = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/fontconfig";
@@ -324,9 +435,31 @@ void Theme::followSystemFont() {
         // A file written anew stops being watched; it's watched again.
         if (QFileInfo::exists(fontconfig + "/fonts.conf") && !m_fontWatcher.files().contains(fontconfig + "/fonts.conf"))
             m_fontWatcher.addPath(fontconfig + "/fonts.conf");
+        m_reloadFontconfig = true;
         m_fontDebounce.start();
     });
-    connect(&m_fontWatcher, &QFileSystemWatcher::fileChanged, this, [this] { m_fontDebounce.start(); });
+    connect(&m_fontWatcher, &QFileSystemWatcher::fileChanged, this, [this] {
+        m_reloadFontconfig = true;
+        m_fontDebounce.start();
+    });
+
+    // omarchy-display-text-size scales text live through ~/.config/omarchy/shell.toml
+    // without touching qtengine's fixed font size; changes here only need a
+    // fast size re-read, not a full fontconfig reload.
+    watchShellConfig();
+    connect(&m_shellWatcher, &QFileSystemWatcher::directoryChanged, this, [this] {
+        watchShellConfig();
+        m_fontDebounce.start();
+    });
+    connect(&m_shellWatcher, &QFileSystemWatcher::fileChanged, this, [this] {
+        watchShellConfig();
+        m_fontDebounce.start();
+    });
+
+    // Non-Omarchy desktops (and resets without shell.toml) scale text through
+    // the xdg-desktop-portal Settings interface.
+    readPortalTextScale();
+
     // The platform theme (qtengine) tells each window when its fonts change.
     qApp->installEventFilter(this);
     // At startup Qt has already loaded the current fontconfig; only live
@@ -335,21 +468,38 @@ void Theme::followSystemFont() {
 }
 
 bool Theme::eventFilter(QObject *watched, QEvent *event) {
-    if (event->type() == QEvent::ThemeChange)
+    if (event->type() == QEvent::ThemeChange) {
+        m_reloadFontconfig = true;
         m_fontDebounce.start();
+    }
     return QObject::eventFilter(watched, event);
+}
+
+qreal Theme::effectiveTextScale(qreal fixedPoints) const {
+    const QString userShell = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/omarchy/shell.toml";
+    if (const qreal scale = shellTextScale(userShell); scale > 0)
+        return scale;
+    if (const qreal scale = shellTextScale(m_directory + "/theme/shell.toml"); scale > 0)
+        return scale;
+    const qreal points = fixedPoints > 0 ? fixedPoints : designPoints;
+    const qreal factor = m_portalTextScale > 0 ? m_portalTextScale : 1.0;
+    return textScaleFor(points * factor);
 }
 
 void Theme::readSystemFont(bool reloadConfig) {
     const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    QString family;
-    if (!reloadConfig) {
+    // A size-only update keeps the family last resolved: the configuration
+    // Qt started with may predate a fonts.conf change resolved since.
+    QString family = !reloadConfig && fixed.family() == m_requestedFamily ? m_resolvedFamily : QString();
+    if (family.isEmpty() && !reloadConfig) {
         if (FcConfig *current = FcConfigGetCurrent())
             family = matchFamily(current, fixed.family());
     }
     if (family.isEmpty())
         family = resolveFamily(fixed.family());
-    const qreal scale = textScaleFor(fixed.pointSizeF());
+    m_requestedFamily = fixed.family();
+    m_resolvedFamily = family;
+    const qreal scale = effectiveTextScale(fixed.pointSizeF());
     QFont font(family);
     font.setStyleHint(QFont::Monospace);
     font.setPixelSize(qRound(designPixels * scale));

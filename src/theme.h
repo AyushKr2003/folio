@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QDBusVariant>
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QLocalSocket>
@@ -74,15 +75,25 @@ public:
 
     // Follows the system's fixed-width font from now on, as the application's
     // font and through fontFamily and textScale: when the platform theme says
-    // it changed (qtengine's font or size), and when fontconfig's own choice
-    // of it does (omarchy-font-set rewrites ~/.config/fontconfig/fonts.conf).
+    // it changed (qtengine's font or size), when fontconfig's own choice of it
+    // does (omarchy-font-set rewrites ~/.config/fontconfig/fonts.conf), when
+    // Omarchy's display text size changes (~/.config/omarchy/shell.toml), and
+    // when the desktop portal's text-scaling-factor changes.
     void followSystemFont();
     // How much to scale text drawn for Omarchy's default size (11pt) to show
     // it at `points`, kept to what Folio's layout holds.
     static qreal textScaleFor(qreal points);
+    // Text scale from an Omarchy shell.toml (`[font] base-size`, anchored at
+    // 12px = 1.0), clamped to Folio's layout range, or 0 when unset.
+    static qreal shellTextScale(const QString &shellConfig);
     // The family fontconfig gives for `family` (an alias like monospace) as
     // its configuration says now, or `family` when it gives none.
     static QString resolveFamily(const QString &family);
+
+public slots:
+    // Receives org.freedesktop.portal.Settings.SettingChanged for live
+    // text-scaling-factor updates when shell.toml does not pin base-size.
+    void portalSettingChanged(const QString &ns, const QString &key, const QDBusVariant &value);
 
 signals:
     void changed();
@@ -93,10 +104,15 @@ private:
     void recomputeColors();
     void reload();
     void refreshRounding();
+    void watchShellConfig();
+    void readPortalTextScale();
+    bool applyPortalTextScale(const QDBusVariant &value);
+    qreal effectiveTextScale(qreal fixedPoints) const;
     void readSystemFont(bool reloadConfig = true);
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     QString m_directory;
+    bool m_liveDesktop = false;
     QHash<QString, QColor> m_colors;
     bool m_light = false;
     QColor m_lighterBackground;
@@ -114,7 +130,13 @@ private:
     bool m_roundingAgain = false;
     QLocalSocket m_events;
     QString m_fontFamily;
+    // The fixed font's family as last asked for, and what it resolved to.
+    QString m_requestedFamily, m_resolvedFamily;
     qreal m_textScale = 1;
+    qreal m_portalTextScale = 0;
+    bool m_followingFont = false;
+    bool m_reloadFontconfig = false;
     QFileSystemWatcher m_fontWatcher;
+    QFileSystemWatcher m_shellWatcher;
     QTimer m_fontDebounce;
 };

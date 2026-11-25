@@ -288,6 +288,7 @@ Rectangle {
                          && (!big.shown || (big.failed && quick.status !== Image.Ready))
                 name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
+                scaled: false
                 stroke: 1.2
                 color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
             }

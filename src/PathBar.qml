@@ -87,7 +87,7 @@ Rectangle {
     // Transparent: the window draws one bar across the whole top, so the
     // path bars of one or two panes read as part of it.
     color: "transparent"
-    implicitHeight: 60
+    implicitHeight: Math.round(60 * theme.textScale)
 
     RowLayout {
         anchors.fill: parent
@@ -234,8 +234,8 @@ Rectangle {
             id: help
             visible: bar.showsHelp
             // As wide as the buttons beside it, the ? itself smaller.
-            implicitWidth: 36
-            implicitHeight: 36
+            implicitWidth: Math.round(36 * theme.textScale)
+            implicitHeight: Math.round(36 * theme.textScale)
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
             text: qsTr("Keyboard shortcuts")
@@ -248,8 +248,8 @@ Rectangle {
             contentItem: Item {
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 22
-                    height: 22
+                    width: Math.round(22 * theme.textScale)
+                    height: Math.round(22 * theme.textScale)
                     radius: width / 2
                     color: "transparent"
                     border.width: 1

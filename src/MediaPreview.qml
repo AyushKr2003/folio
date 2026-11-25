@@ -72,6 +72,7 @@ Item {
                     visible: !cover.visible
                     name: "audio"
                     size: 120
+                    scaled: false
                     stroke: 1.2
                     color: theme.accent
                 }
