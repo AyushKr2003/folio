@@ -92,14 +92,15 @@ public:
         return failure(call(encrypted, prefix + "Encrypted", "Lock", {QVariantMap()}));
     }
 
+    // No "tear-down": udisks asks polkit for it as a change to the system's
+    // configuration, a password every call, where formatting alone asks once
+    // and is kept. What it locked, formatting locks first itself.
     QString wipe(const QString &partition) override {
-        return failure(call(partition, prefix + "Block", "Format", {QString("empty"), QVariantMap{{"tear-down", true}}}));
+        return failure(call(partition, prefix + "Block", "Format", {QString("empty"), QVariantMap()}));
     }
 
     QString makeTable(const Disk &disk) override {
-        // Tearing down also locks anything unlocked on it, which unmounting
-        // alone leaves open.
-        return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap{{"tear-down", true}}}));
+        return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap()}));
     }
 
     QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {

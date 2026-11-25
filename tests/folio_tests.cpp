@@ -7053,6 +7053,21 @@ private slots:
                                            "open " + stick.block, "eject " + stick.block}));
     }
 
+    void formattingLocksWhatsUnlockedOnTheDrive()
+    {
+        // Locked first, or its partition stays busy and can't be wiped.
+        Disk stick = sanDisk();
+        stick.filesystems = {"/org/freedesktop/UDisks2/block_devices/dm_2d1"};
+        stick.unlocked = {stick.block + "1"};
+        auto fake = fakeDisks({stick});
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.format(stick.identity, "Photos");
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(fake->calls.mid(0, 3), (QStringList{"unmount " + stick.filesystems.first(), "lock " + stick.block + "1",
+                                                     "wipe " + stick.block + "1"}));
+    }
+
     void burningWritesTheImageThenEjects()
     {
         QTemporaryDir dir;

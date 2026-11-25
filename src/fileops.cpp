@@ -2429,6 +2429,10 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
                     return result;
+            // An unlocked volume keeps its partition busy.
+            for (const QString &encrypted : disk.unlocked)
+                if (result.error = disks->lock(encrypted); !result.error.isEmpty())
+                    return result;
             // Cancelled while it was let go of, nothing's erased yet. Once
             // udisks is formatting, it can't be stopped.
             if (job.cancelled)
