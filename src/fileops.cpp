@@ -2435,6 +2435,13 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
                 return result;
             if (result.error = unchanged(*disks, disk); !result.error.isEmpty())
                 return result;
+            // What each partition was goes first: the new one starts where
+            // the first did, and would come up still looking like its
+            // filesystem, for an automounter to mount before udisks could
+            // wipe it.
+            for (const QString &old : disk.partitions)
+                if (result.error = disks->wipe(old); !result.error.isEmpty())
+                    return result;
             QString partition;
             if (result.error = disks->makeTable(disk); !result.error.isEmpty())
                 return result;

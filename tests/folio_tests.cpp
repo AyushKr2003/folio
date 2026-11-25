@@ -140,6 +140,7 @@ public:
     QList<Disk> list() override { return disks; }
     QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
     QString lock(const QString &encrypted) override { return made("lock " + encrypted, "lock"); }
+    QString wipe(const QString &partition) override { return made("wipe " + partition, "wipe"); }
     QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
     QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
         *partition = disk.block + "1";
@@ -182,6 +183,7 @@ static Disk sanDisk()
     disk.removable = disk.canPowerOff = disk.ejectable = true;
     disk.mounts = {"/run/media/me/STICK"};
     disk.filesystems = {"/org/freedesktop/UDisks2/block_devices/sdb1"};
+    disk.partitions = disk.filesystems;
     return disk;
 }
 
@@ -6537,6 +6539,7 @@ private slots:
         QVERIFY(system.mounts.contains("/boot"));
         QVERIFY(Disks::holdsSystem(system));
         QCOMPARE(system.unlocked, QStringList{at + "nvme0n1p2"});
+        QCOMPARE(system.partitions, (QStringList{at + "nvme0n1p1", at + "nvme0n1p2"}));
         const Disk &stick = disks.at(1);
         QCOMPARE(stick.device, QString("/dev/sda"));
         QCOMPARE(stick.label, QString("OMARCHY_202611"));
@@ -6720,8 +6723,8 @@ private slots:
         QCOMPARE(busy.value(0), QString("Formatting SanDisk Ultra…"));
         QCOMPARE(changed.count(), 1);
         const QString sdb = sanDisk().block;
-        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addPartition " + sdb + " exfat Photos",
-                                           "mount " + sdb + "1"}));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1", "makeTable " + sdb,
+                                           "addPartition " + sdb + " exfat Photos", "mount " + sdb + "1"}));
     }
 
     void formatDialogSaysWhatItMakes()
@@ -6881,14 +6884,21 @@ private slots:
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't format SanDisk Ultra. Permission was refused."));
         const QString sdb = sanDisk().block;
-        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb}));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1", "makeTable " + sdb}));
+
+        // An old partition that can't be wiped leaves the table as it was.
+        fake->calls.clear();
+        fake->refuse = {{"wipe", "Device or resource busy"}};
+        ops.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(failed.count(), 2);
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1"}));
 
         // A disk gone from udisks' list isn't touched.
         fake->calls.clear();
         fake->disks.clear();
         ops.format(sanDisk().identity, "Photos");
-        QCOMPARE(failed.count(), 2);
-        QCOMPARE(failed.at(1).at(0).toString(), QString("That drive is gone."));
+        QCOMPARE(failed.count(), 3);
+        QCOMPARE(failed.at(2).at(0).toString(), QString("That drive is gone."));
         QVERIFY(fake->calls.isEmpty());
     }
 
