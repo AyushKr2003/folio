@@ -9,6 +9,7 @@
 
 #include "foldermodel.h"
 #include "mounter.h"
+#include "places.h"
 #include "plugins.h"
 #include "previewer.h"
 
@@ -46,6 +47,8 @@ public:
 
     // The plugins whose views, items and actions this window offers.
     void setPlugins(Plugins *plugins);
+    // Drives are called what the sidebar calls them.
+    void setPlaces(Places *places);
 
     FolderModel *folder() { return &m_folder; }
     // The order each folder was last put in, kept in Folio's settings: a
@@ -197,6 +200,7 @@ private:
     bool askPlugins();
     // A GVfs mount's name on screen: its plugin item's name, or its host.
     QString mountName(const QString &mount) const;
+    QString driveName(const QString &root) const;
 
     QString m_home;
     FolderModel m_folder;
@@ -212,6 +216,7 @@ private:
     int m_sortsRevision = 0;
     bool m_choosing = false;
     Plugins *m_plugins = nullptr;
+    Places *m_places = nullptr;
     Mounter m_mounter;
     // What's being connected to, as the window names it, and whether it's
     // a bare server, which lands in the matching home folder.

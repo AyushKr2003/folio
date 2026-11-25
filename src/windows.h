@@ -6,6 +6,7 @@
 
 class Backend;
 class FileOps;
+class Places;
 class Plugins;
 class QQmlContext;
 class QQmlEngine;
@@ -19,7 +20,7 @@ class Windows : public QObject {
     Q_OBJECT
 
 public:
-    explicit Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent = nullptr);
+    explicit Windows(QQmlEngine *engine, Plugins *plugins, Places *places = nullptr, QObject *parent = nullptr);
 
     // Opens a window on a folder, or on a file's folder with it selected;
     // with a `chooser`, a file chooser's window, answering it (and attached as
@@ -57,6 +58,7 @@ private:
 
     QQmlEngine *m_engine;
     Plugins *m_plugins;
+    Places *m_places;
     QQmlComponent m_component;
     QQmlComponent m_pane;
     // Most recently used first.

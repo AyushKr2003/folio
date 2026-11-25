@@ -12,8 +12,8 @@ static void initQmlCache() {
     Q_INIT_RESOURCE(qmlcache_folio_core);
 }
 
-Windows::Windows(QQmlEngine *engine, Plugins *plugins, QObject *parent)
-    : QObject(parent), m_engine(engine), m_plugins(plugins),
+Windows::Windows(QQmlEngine *engine, Plugins *plugins, Places *places, QObject *parent)
+    : QObject(parent), m_engine(engine), m_plugins(plugins), m_places(places),
       m_component((initQmlCache(), engine), QUrl("qrc:/FolioUI/Main.qml")),
       m_pane(engine, QUrl("qrc:/FolioUI/FolderPane.qml")) {
     // Main.qml calls windows.openSplit() and windows.closeSplit().
@@ -29,6 +29,8 @@ Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent, Q
     pane.context = new QQmlContext(parent, this);
     pane.backend = new Backend({}, this);
     pane.backend->setPlugins(m_plugins);
+    if (m_places)
+        pane.backend->setPlaces(m_places);
     pane.fileOps = new FileOps(this);
     pane.context->setContextProperty("backend", pane.backend);
     pane.context->setContextProperty("fileOps", pane.fileOps);

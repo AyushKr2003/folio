@@ -128,7 +128,7 @@ struct Session {
     QQmlEngine engine;
     Windows windows;
 
-    Session() : plugins(translator.language()), windows(&engine, &plugins) {
+    Session() : plugins(translator.language()), windows(&engine, &plugins, &places) {
         // Installed before anything is translated, and every qsTr() binding is
         // re-evaluated when the Omarchy language changes.
         QCoreApplication::installTranslator(&translator);
