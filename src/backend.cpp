@@ -86,6 +86,21 @@ QString Backend::mountName(const QString &mount) const {
     return name.isEmpty() ? mountLabel(QFileInfo(mount).fileName()) : name;
 }
 
+// Where the removable or extra drive holding `path` is mounted, when it's one
+// (under /run/media, /media or /mnt), so its path starts at its name rather
+// than at /run/media/<user>/.
+static QString driveRoot(const QString &path) {
+    static const QStringList places{"/run/media/", "/media/", "/mnt/"};
+    for (const QString &place : places) {
+        if (!path.startsWith(place))
+            continue;
+        const QString root = QStorageInfo(path).rootPath();
+        if (root.startsWith(place) && (path == root || path.startsWith(root + "/")))
+            return root;
+    }
+    return {};
+}
+
 QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
@@ -100,22 +115,9 @@ QString Backend::title() const {
         return tr("Computer");
     if (QFileInfo(p).absolutePath() == gvfsRoot())
         return mountName(p);
+    if (driveRoot(p) == p)
+        return driveName(p);
     return QFileInfo(p).fileName();
-}
-
-// Where the removable or extra drive holding `path` is mounted, when it's one
-// (under /run/media, /media or /mnt), so its path starts at its name rather
-// than at /run/media/<user>/.
-static QString driveRoot(const QString &path) {
-    static const QStringList places{"/run/media/", "/media/", "/mnt/"};
-    for (const QString &place : places) {
-        if (!path.startsWith(place))
-            continue;
-        const QString root = QStorageInfo(path).rootPath();
-        if (root.startsWith(place) && (path == root || path.startsWith(root + "/")))
-            return root;
-    }
-    return {};
 }
 
 QVariantList Backend::crumbs() const {
@@ -141,7 +143,7 @@ QVariantList Backend::crumbs() const {
         label = mountName(mount);
     } else if (const QString drive = driveRoot(p); !drive.isEmpty()) {
         base = drive;
-        label = QFileInfo(drive).fileName();
+        label = driveName(drive);
     }
 
     QVariantList crumbs{QVariantMap{{"name", label}, {"path", base}}};
@@ -387,6 +389,20 @@ void Backend::forward() {
     ++m_index;
     if (!go(m_history.at(m_index), false))
         --m_index;
+}
+
+QString Backend::driveName(const QString &root) const {
+    if (m_places)
+        for (const QVariant &device : m_places->devices())
+            if (const QVariantMap drive = device.toMap(); drive.value("path").toString() == root)
+                return drive.value("name").toString();
+    return QFileInfo(root).fileName();
+}
+
+void Backend::setPlaces(Places *places) {
+    m_places = places;
+    // A drive renamed or newly listed renames the title and first crumb.
+    connect(places, &Places::changed, this, &Backend::placeChanged);
 }
 
 void Backend::setPlugins(Plugins *plugins) {

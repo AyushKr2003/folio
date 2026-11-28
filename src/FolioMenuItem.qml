@@ -27,7 +27,7 @@ MenuItem {
     visible: shown
     height: shown ? implicitHeight : 0
     activeFocusOnTab: shown
-    implicitHeight: 32
+    implicitHeight: Math.max(32, Math.round(28 * theme.textScale))
     leftPadding: 14
     rightPadding: 14
 

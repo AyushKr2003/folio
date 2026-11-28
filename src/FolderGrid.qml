@@ -82,12 +82,12 @@ GridView {
     // Tiles grow with the zoom; the name and details under them don't. A
     // narrow pane (one side of a split) caps it at a tile its width holds.
     property real zoom: 1
-    readonly property real tileZoom: Math.max(0.5, Math.min(zoom, (width - 40) / 128))
+    readonly property real tileZoom: Math.max(0.5, Math.min(zoom * theme.textScale, (width - 40) / 128))
     // The rows reflow, so bring the cursor's tile back into view.
     onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
     readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * tileZoom)))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 100 + Math.round(92 * tileZoom)
+    cellHeight: Math.round(70 + 30 * theme.textScale) + Math.round(92 * tileZoom)
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 

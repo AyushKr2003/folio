@@ -189,7 +189,7 @@ ApplicationWindow {
         Keys.onEscapePressed: chooser.cancel()
 
         // The bar across the top; the panes' path bars draw over it.
-        readonly property int barHeight: 60
+        readonly property int barHeight: Math.round(60 * theme.textScale)
         Rectangle {
             width: parent.width
             height: parent.barHeight
@@ -213,7 +213,7 @@ ApplicationWindow {
                 onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 visible: win.sidebarVisible
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 190
+                Layout.preferredWidth: Math.round(190 * theme.textScale)
                 Layout.fillHeight: true
             }
             Rectangle { visible: win.sidebarVisible; Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }

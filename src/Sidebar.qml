@@ -228,7 +228,8 @@ Rectangle {
         readonly property var mark: dropPath.length > 0 ? plugins.marks[dropPath] : undefined
 
         Layout.fillWidth: true
-        implicitHeight: detail.length > 0 ? 44 : 34
+        implicitHeight: detail.length > 0 ? Math.max(44, Math.round(40 * theme.textScale))
+                                          : Math.max(34, Math.round(28 * theme.textScale))
         leftPadding: mirrored ? endPadding : 14
         rightPadding: mirrored ? 14 : endPadding
         hoverEnabled: true
@@ -386,8 +387,8 @@ Rectangle {
                         id: unpin
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 28
-                        implicitHeight: 28
+                        implicitWidth: Math.round(28 * theme.textScale)
+                        implicitHeight: Math.round(28 * theme.textScale)
                         visible: pinRow.hovered || hovered || pinRow.keyed
                         glyph: "close"
                         text: qsTr("Unpin")
@@ -474,10 +475,10 @@ Rectangle {
                         id: eject
                         // Where the drive's own icon is, centered on it.
                         anchors.left: parent.left
-                        anchors.leftMargin: driveRow.leftPadding + 8 - width / 2
+                        anchors.leftMargin: driveRow.leftPadding + Math.round(9 * theme.textScale) - width / 2
                         anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 28
-                        implicitHeight: 28
+                        implicitWidth: Math.round(28 * theme.textScale)
+                        implicitHeight: Math.round(28 * theme.textScale)
                         visible: !!driveRow.modelData.release && (driveRow.hovered || hovered || driveRow.keyed)
                         glyph: "eject"
                         text: driveRow.modelData.release === "eject" ? qsTr("Eject") : qsTr("Unmount")
@@ -517,8 +518,8 @@ Rectangle {
                                 id: forgetItem
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                implicitWidth: 28
-                                implicitHeight: 28
+                                implicitWidth: Math.round(28 * theme.textScale)
+                                implicitHeight: Math.round(28 * theme.textScale)
                                 visible: itemRow.modelData.forgettable && (itemRow.hovered || hovered || itemRow.keyed)
                                 glyph: "close"
                                 text: qsTr("Remove from the sidebar")

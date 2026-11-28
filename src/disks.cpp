@@ -92,10 +92,15 @@ public:
         return failure(call(encrypted, prefix + "Encrypted", "Lock", {QVariantMap()}));
     }
 
+    // No "tear-down": udisks asks polkit for it as a change to the system's
+    // configuration, a password every call, where formatting alone asks once
+    // and is kept. What it locked, formatting locks first itself.
+    QString wipe(const QString &partition) override {
+        return failure(call(partition, prefix + "Block", "Format", {QString("empty"), QVariantMap()}));
+    }
+
     QString makeTable(const Disk &disk) override {
-        // Tearing down also locks anything unlocked on it, which unmounting
-        // alone leaves open.
-        return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap{{"tear-down", true}}}));
+        return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap()}));
     }
 
     QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
@@ -128,7 +133,9 @@ public:
     }
 
     QString mount(const QString &filesystem) override {
-        return failure(call(filesystem, prefix + "Filesystem", "Mount", {QVariantMap()}));
+        const QDBusMessage reply = call(filesystem, prefix + "Filesystem", "Mount", {QVariantMap()});
+        // Mounted meanwhile (an automounter got there first) is what was wanted.
+        return reply.errorName() == "org.freedesktop.UDisks2.Error.AlreadyMounted" ? QString() : failure(reply);
     }
 
     QString open(const Disk &disk, int *fd) override {
@@ -292,6 +299,8 @@ QList<Disk> Disks::parse(const Objects &objects) {
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
+        if (it.value().contains("Partition"))
+            disk->partitions << it.key();
         // What's unlocked comes and goes with its key (burning locks it),
         // so it's no part of which disk this is.
         if (const QString backing = block.value("CryptoBackingDevice").toString(); !backing.isEmpty() && backing != "/")

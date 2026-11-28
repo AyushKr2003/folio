@@ -7,8 +7,9 @@ Item {
     id: spinner
     property real size: 14
     property color color: theme.secondaryForeground
-    implicitWidth: size
-    implicitHeight: size
+    readonly property real effectiveSize: Math.round(size * theme.textScale)
+    implicitWidth: effectiveSize
+    implicitHeight: effectiveSize
 
     Shape {
         anchors.fill: parent
@@ -19,10 +20,10 @@ Item {
             fillColor: "transparent"
             capStyle: ShapePath.RoundCap
             PathAngleArc {
-                centerX: spinner.size / 2
-                centerY: spinner.size / 2
-                radiusX: spinner.size / 2 - 1
-                radiusY: spinner.size / 2 - 1
+                centerX: spinner.effectiveSize / 2
+                centerY: spinner.effectiveSize / 2
+                radiusX: spinner.effectiveSize / 2 - 1
+                radiusY: spinner.effectiveSize / 2 - 1
                 startAngle: 0
                 sweepAngle: 270
             }

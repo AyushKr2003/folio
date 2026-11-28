@@ -37,13 +37,13 @@ Item {
     // The list's size step: the row's height and picture grow with it, the
     // name and details don't, as with the grid's tiles.
     property real zoom: 1
-    readonly property int picture: Math.round(20 * zoom)
+    readonly property int picture: Math.round(20 * zoom * theme.textScale)
 
     signal clicked(int modifiers)
     signal activated()
     signal toggled()
 
-    implicitHeight: Math.round(32 * zoom)
+    implicitHeight: Math.round(32 * zoom * theme.textScale)
 
     // The name always gets room: in a narrow window the date goes first,
     // then the size. (The icon says what kind a file is; there's no column
@@ -95,8 +95,8 @@ Item {
         Item {
             visible: row.tree
             Layout.rightMargin: -8
-            implicitWidth: 18
-            implicitHeight: 32
+            implicitWidth: Math.round(18 * theme.textScale)
+            implicitHeight: row.implicitHeight
             Glyph {
                 visible: row.isDir
                 anchors.centerIn: parent

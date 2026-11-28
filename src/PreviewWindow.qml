@@ -429,6 +429,7 @@ ApplicationWindow {
                 visible: (win.item.peek || []).length === 0
                 name: "folder"
                 size: 120
+                scaled: false
                 stroke: 1.1
                 color: theme.accent
             }
@@ -465,6 +466,7 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignHCenter
                     name: "file"
                     size: 120
+                    scaled: false
                     stroke: 1.1
                     color: theme.secondaryForeground
                 }

@@ -140,6 +140,7 @@ public:
     QList<Disk> list() override { return disks; }
     QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
     QString lock(const QString &encrypted) override { return made("lock " + encrypted, "lock"); }
+    QString wipe(const QString &partition) override { return made("wipe " + partition, "wipe"); }
     QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
     QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
         *partition = disk.block + "1";
@@ -182,6 +183,7 @@ static Disk sanDisk()
     disk.removable = disk.canPowerOff = disk.ejectable = true;
     disk.mounts = {"/run/media/me/STICK"};
     disk.filesystems = {"/org/freedesktop/UDisks2/block_devices/sdb1"};
+    disk.partitions = disk.filesystems;
     return disk;
 }
 
@@ -6537,6 +6539,7 @@ private slots:
         QVERIFY(system.mounts.contains("/boot"));
         QVERIFY(Disks::holdsSystem(system));
         QCOMPARE(system.unlocked, QStringList{at + "nvme0n1p2"});
+        QCOMPARE(system.partitions, (QStringList{at + "nvme0n1p1", at + "nvme0n1p2"}));
         const Disk &stick = disks.at(1);
         QCOMPARE(stick.device, QString("/dev/sda"));
         QCOMPARE(stick.label, QString("OMARCHY_202611"));
@@ -6720,8 +6723,8 @@ private slots:
         QCOMPARE(busy.value(0), QString("Formatting SanDisk Ultra…"));
         QCOMPARE(changed.count(), 1);
         const QString sdb = sanDisk().block;
-        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addPartition " + sdb + " exfat Photos",
-                                           "mount " + sdb + "1"}));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1", "makeTable " + sdb,
+                                           "addPartition " + sdb + " exfat Photos", "mount " + sdb + "1"}));
     }
 
     void formatDialogSaysWhatItMakes()
@@ -6881,14 +6884,21 @@ private slots:
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't format SanDisk Ultra. Permission was refused."));
         const QString sdb = sanDisk().block;
-        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb}));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1", "makeTable " + sdb}));
+
+        // An old partition that can't be wiped leaves the table as it was.
+        fake->calls.clear();
+        fake->refuse = {{"wipe", "Device or resource busy"}};
+        ops.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(failed.count(), 2);
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "wipe " + sdb + "1"}));
 
         // A disk gone from udisks' list isn't touched.
         fake->calls.clear();
         fake->disks.clear();
         ops.format(sanDisk().identity, "Photos");
-        QCOMPARE(failed.count(), 2);
-        QCOMPARE(failed.at(1).at(0).toString(), QString("That drive is gone."));
+        QCOMPARE(failed.count(), 3);
+        QCOMPARE(failed.at(2).at(0).toString(), QString("That drive is gone."));
         QVERIFY(fake->calls.isEmpty());
     }
 
@@ -7041,6 +7051,21 @@ private slots:
         QTRY_COMPARE(notice.count(), 1);
         QCOMPARE(fake->calls, (QStringList{"unmount " + stick.filesystems.first(), "lock " + stick.block + "1",
                                            "open " + stick.block, "eject " + stick.block}));
+    }
+
+    void formattingLocksWhatsUnlockedOnTheDrive()
+    {
+        // Locked first, or its partition stays busy and can't be wiped.
+        Disk stick = sanDisk();
+        stick.filesystems = {"/org/freedesktop/UDisks2/block_devices/dm_2d1"};
+        stick.unlocked = {stick.block + "1"};
+        auto fake = fakeDisks({stick});
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.format(stick.identity, "Photos");
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(fake->calls.mid(0, 3), (QStringList{"unmount " + stick.filesystems.first(), "lock " + stick.block + "1",
+                                                     "wipe " + stick.block + "1"}));
     }
 
     void burningWritesTheImageThenEjects()
@@ -9404,6 +9429,110 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(theme.fontFamily(), other, 3000);
         QCOMPARE(QGuiApplication::font().family(), other);
         QVERIFY(changed.count() >= 1);
+
+        // A text size change afterwards keeps that font, rather than
+        // resolving monospace again as fontconfig had it at startup.
+        QDir(config.path()).mkpath("omarchy");
+        write(config.filePath("omarchy/shell.toml"), "[font]\nbase-size = 15\n");
+        QTRY_COMPARE_WITH_TIMEOUT(theme.textScale(), 1.25, 3000);
+        QCOMPARE(theme.fontFamily(), other);
+    }
+
+    // `omarchy display text size` writes `[font] base-size` to
+    // ~/.config/omarchy/shell.toml (12px = 1.0) via atomic rename and updates
+    // the desktop portal's text-scaling-factor alongside it without touching
+    // qtengine's fixed font size. Folio follows both live without double-scaling.
+    void themeFollowsOmarchyTextSize()
+    {
+        QTemporaryDir config;
+        const QByteArray was = qgetenv("XDG_CONFIG_HOME");
+        qputenv("XDG_CONFIG_HOME", QFile::encodeName(config.path()));
+        const QFont appFont = QGuiApplication::font();
+        const auto restore = qScopeGuard([&] {
+            if (was.isEmpty())
+                qunsetenv("XDG_CONFIG_HOME");
+            else
+                qputenv("XDG_CONFIG_HOME", was);
+            QGuiApplication::setFont(appFont);
+        });
+
+        // Parser coverage: sections, comments, clamping, missing/reset.
+        QCOMPARE(Theme::shellTextScale(config.filePath("missing.toml")), 0.0);
+        const QString probe = config.filePath("probe.toml");
+        write(probe, "[bar]\nbase-size = 18\n");
+        QCOMPARE(Theme::shellTextScale(probe), 0.0);
+        write(probe, "[font] # omarchy\n# base-size = 20\nbase-size = 15 # bigger\n");
+        QCOMPARE(Theme::shellTextScale(probe), 1.25);
+        write(probe, "[font]\nbase-size = 9\n");
+        QCOMPARE(Theme::shellTextScale(probe), 0.75);
+        write(probe, "[font]\nbase-size = 20\n");
+        QCOMPARE(Theme::shellTextScale(probe), 1.5);
+        write(probe, "[font]\nbase-size = 5\n");
+        QCOMPARE(Theme::shellTextScale(probe), 0.75);
+
+        const qreal basePoints = QFontDatabase::systemFont(QFontDatabase::FixedFont).pointSizeF();
+        const qreal defaultScale = Theme::textScaleFor(basePoints);
+
+        // Theme's own shell.toml sets the default when the user has no override.
+        const QString themeDir = config.filePath("theme");
+        QDir(themeDir).mkpath("theme");
+        write(themeDir + "/theme/shell.toml", "[font]\nbase-size = 14\n");
+
+        Theme theme(themeDir);
+        QSignalSpy changed(&theme, &Theme::fontChanged);
+        theme.followSystemFont();
+        QVERIFY(qFuzzyCompare(theme.textScale(), 14.0 / 12.0));
+        QCOMPARE(QGuiApplication::font().pixelSize(), qRound(13 * (14.0 / 12.0)));
+
+        // Creating ~/.config/omarchy/shell.toml overrides the theme live.
+        QDir(config.path()).mkpath("omarchy");
+        const QString shellPath = config.filePath("omarchy/shell.toml");
+        write(shellPath, "[font]\nbase-size = 15\n");
+        QTRY_COMPARE_WITH_TIMEOUT(theme.textScale(), 1.25, 2000);
+        QCOMPARE(QGuiApplication::font().pixelSize(), qRound(13 * 1.25));
+        QVERIFY(changed.count() >= 1);
+
+        // Atomic rename (mktemp + mv), matching omarchy-display-text-size.
+        const QString tmp = config.filePath("shell.tmp");
+        write(tmp, "[font]\nbase-size = 9\n");
+        QCOMPARE(::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(shellPath).constData()), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(theme.textScale(), 0.75, 2000);
+        QCOMPARE(QGuiApplication::font().pixelSize(), qRound(13 * 0.75));
+
+        // Portal text-scaling-factor must not double-scale while shell.toml sets base-size.
+        theme.portalSettingChanged("org.gnome.desktop.interface", "text-scaling-factor", QDBusVariant(1.25));
+        QTest::qWait(150);
+        QCOMPARE(theme.textScale(), 0.75);
+
+        // Removing both user and theme base-size falls back to the portal scale.
+        QFile::remove(themeDir + "/theme/shell.toml");
+        write(tmp, "[font]\n");
+        QCOMPARE(::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(shellPath).constData()), 0);
+        const qreal expectedPortal = Theme::textScaleFor((basePoints > 0 ? basePoints : 11.0) * 1.25);
+        QTRY_VERIFY_WITH_TIMEOUT(qFuzzyCompare(theme.textScale(), expectedPortal), 2000);
+
+        // Double-wrapped QDBusVariant (as Settings.Read returns) and reset to 1.0.
+        theme.portalSettingChanged("org.gnome.desktop.interface", "text-scaling-factor",
+                                   QDBusVariant(QVariant::fromValue(QDBusVariant(1.0))));
+        QTRY_VERIFY_WITH_TIMEOUT(qFuzzyCompare(theme.textScale(), defaultScale), 2000);
+
+        // UI glyphs scale with theme.textScale unless opted out (`scaled: false`).
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        QQmlComponent glyphComp(&engine, QUrl("qrc:/FolioUI/Glyph.qml"));
+        QVERIFY2(glyphComp.isReady(), qPrintable(glyphComp.errorString()));
+        std::unique_ptr<QQuickItem> glyph(qobject_cast<QQuickItem *>(glyphComp.create()));
+        QVERIFY(glyph);
+        std::unique_ptr<QQuickItem> fixedGlyph(
+            qobject_cast<QQuickItem *>(glyphComp.createWithInitialProperties({{"scaled", false}, {"size", 76.0}})));
+        QVERIFY(fixedGlyph);
+
+        write(tmp, "[font]\nbase-size = 18\n");
+        QCOMPARE(::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(shellPath).constData()), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(theme.textScale(), 1.5, 2000);
+        QCOMPARE(glyph->implicitWidth(), 27.0);
+        QCOMPARE(glyph->implicitHeight(), 27.0);
+        QCOMPARE(fixedGlyph->implicitWidth(), 76.0);
     }
 
     void themeFollowsHyprlandRounding()

@@ -2429,12 +2429,23 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
                     return result;
+            // An unlocked volume keeps its partition busy.
+            for (const QString &encrypted : disk.unlocked)
+                if (result.error = disks->lock(encrypted); !result.error.isEmpty())
+                    return result;
             // Cancelled while it was let go of, nothing's erased yet. Once
             // udisks is formatting, it can't be stopped.
             if (job.cancelled)
                 return result;
             if (result.error = unchanged(*disks, disk); !result.error.isEmpty())
                 return result;
+            // What each partition was goes first: the new one starts where
+            // the first did, and would come up still looking like its
+            // filesystem, for an automounter to mount before udisks could
+            // wipe it.
+            for (const QString &old : disk.partitions)
+                if (result.error = disks->wipe(old); !result.error.isEmpty())
+                    return result;
             QString partition;
             if (result.error = disks->makeTable(disk); !result.error.isEmpty())
                 return result;

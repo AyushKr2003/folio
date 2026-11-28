@@ -22,7 +22,7 @@ FileListView {
     // Rows grow with the pane's size step, as the grid's tiles do: their
     // height and picture, not the name and details.
     property real zoom: 1
-    readonly property int rowHeight: Math.round(32 * zoom)
+    readonly property int rowHeight: Math.round(32 * zoom * theme.textScale)
     // The rows reflow, so bring the cursor's row back into view.
     onRowHeightChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, ListView.Contain) } })
 
